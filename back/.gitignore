@@ -1,0 +1,12 @@
+.idea/
+.env
+*.exe
+**/credentials.json
+**/token.json
+/ai-service/ai-service
+/api-gateway/serverfile
+/auth-service/auth-service
+/crm-service/crm-service
+/auth-service/server
+.DS_Store
+Thumbs.db

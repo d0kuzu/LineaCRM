@@ -1,0 +1,13 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="27" height="27" viewBox="0 0 27 27" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Icon">
+<g clip-path="url(#clip0_0_12)">
+<rect width="27" height="27" rx="13.5" fill="white"/>
+<path id="ListChecks" d="M14.125 9.125H19.125M14.125 13.5H19.125M14.125 17.875H19.125M21 28.5L22.25 29.75L24.75 27.25M26.625 31.625L27.875 32.875L30.375 30.375" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" stroke="#191B1A"/>
+</g>
+</g>
+<defs>
+<clipPath id="clip0_0_12">
+<rect width="27" height="27" rx="13.5" fill="white"/>
+</clipPath>
+</defs>
+</svg>

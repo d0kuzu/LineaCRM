@@ -1,0 +1,6 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="27" height="27" viewBox="0 0 27 27" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Icon">
+<rect width="27" height="27" rx="13.5" fill="#F4F5F2"/>
+<path id="CalendarDays" d="M11 7.25V9.75M16 7.25V9.75M7.875 12.25H19.125M11 14.75H11.0062M13.5 14.75H13.5062M16 14.75H16.0063M11 17.25H11.0062M13.5 17.25H13.5062M16 17.25H16.0063M9.125 8.5H17.875C18.5654 8.5 19.125 9.05964 19.125 9.75V18.5C19.125 19.1904 18.5654 19.75 17.875 19.75H9.125C8.43464 19.75 7.875 19.1904 7.875 18.5V9.75C7.875 9.05964 8.43464 8.5 9.125 8.5Z" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" stroke="#585F5B"/>
+</g>
+</svg>

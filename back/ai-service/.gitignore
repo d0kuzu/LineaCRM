@@ -1,0 +1,6 @@
+.idea
+data
+.env
+credentials.json
+token.json
+prompt.txt

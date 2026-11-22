@@ -1,0 +1,284 @@
+package webhook
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"diaxel/internal/config"
+	"diaxel/internal/modules/database"
+	"diaxel/internal/modules/llm"
+	"diaxel/internal/modules/telegram"
+	"diaxel/internal/modules/token"
+
+	"github.com/gin-gonic/gin"
+)
+
+type AIHandler struct {
+	cfg          *config.Settings
+	LLM          *llm.Client
+	db           *database.Store
+	orchestrator *telegram.Orchestrator
+}
+
+func NewAIHandler(cfg *config.Settings, llmClient *llm.Client, db *database.Store, tgOrch *telegram.Orchestrator) *AIHandler {
+	return &AIHandler{
+		cfg:          cfg,
+		LLM:          llmClient,
+		db:           db,
+		orchestrator: tgOrch,
+	}
+}
+
+type RegisterBotRequest struct {
+	Name     string `json:"name"`
+	BotToken string `json:"bot_token,omitempty"`
+}
+
+type RegisterTwilioBotRequest struct {
+	Name         string `json:"name"`
+	TwilioNumber string `json:"twilio_number"`
+	AccountSID   string `json:"account_sid"`
+	AuthToken    string `json:"auth_token"`
+}
+
+func (h *AIHandler) RegisterTelegramBot(c *gin.Context) {
+	var req RegisterBotRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	if req.BotToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bot_token is required"})
+		return
+	}
+
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+		return
+	}
+
+	userId := c.GetHeader("X-User-Id")
+	if userId == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized request from gateway"})
+		return
+	}
+
+	assistant, err := h.db.CreateAssistant(c.Request.Context(), req.Name, "", userId, req.BotToken, "telegram")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create assistant in database"})
+		return
+	}
+
+	webhookURL := fmt.Sprintf("%s/webhooks/telegram/callback/%s", h.cfg.WebhookBaseURL, assistant.Id)
+	if err := h.setTelegramWebhook(req.BotToken, webhookURL); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to register webhook in Telegram: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":       "Telegram bot registered",
+		"assistant_id": assistant.Id,
+	})
+}
+
+func (h *AIHandler) setTelegramWebhook(botToken, webhookURL string) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/setWebhook", botToken)
+
+	body, err := json.Marshal(map[string]string{
+		"url":          webhookURL,
+		"secret_token": h.cfg.TelegramWebhookSecret,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal webhook request: %w", err)
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("failed to call Telegram API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode Telegram response: %w", err)
+	}
+
+	if !result.OK {
+		return fmt.Errorf("Telegram setWebhook failed: %s", result.Description)
+	}
+
+	return nil
+}
+
+func (h *AIHandler) RegisterAPIBot(c *gin.Context) {
+	var req RegisterBotRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+		return
+	}
+
+	userId := c.GetHeader("X-User-Id")
+	if userId == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized request from gateway"})
+		return
+	}
+
+	secureToken, err := token.GenerateSecureToken(h.cfg.TokenPrefix, h.cfg.TokenLength)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
+		return
+	}
+
+	assistant, err := h.db.CreateAssistant(c.Request.Context(), req.Name, secureToken, userId, "", "api")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create assistant in database"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "Assistant registered", "assistant_id": assistant.Id, "token": secureToken})
+}
+
+func (h *AIHandler) RegisterTwilioBot(c *gin.Context) {
+	var req RegisterTwilioBotRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	if req.Name == "" || req.TwilioNumber == "" || req.AccountSID == "" || req.AuthToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "all fields (name, twilio_number, account_sid, auth_token) are required"})
+		return
+	}
+
+	userId := c.GetHeader("X-User-Id")
+	if userId == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized request from gateway"})
+		return
+	}
+
+	assistant, err := h.db.CreateTwilioAssistant(c.Request.Context(), req.Name, userId, req.TwilioNumber, req.AccountSID, req.AuthToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register Twilio assistant"})
+		return
+	}
+
+	webhookURL := fmt.Sprintf("%s/twilio/webhook/%s", h.cfg.BaseURL, assistant.Id)
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":       "Twilio assistant registered",
+		"assistant_id": assistant.Id,
+		"webhook_url":  webhookURL,
+	})
+}
+
+type TelegramUpdate struct {
+	UpdateID int64 `json:"update_id"`
+	Message  struct {
+		Text string `json:"text"`
+		Chat struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+		From struct {
+			ID int64 `json:"id"`
+		} `json:"from"`
+	} `json:"message"`
+}
+
+func (h *AIHandler) HandleTelegramWebhook(c *gin.Context) {
+	assistantId := c.Param("assistant_id")
+
+	secretToken := c.GetHeader("X-Telegram-Bot-Api-Secret-Token")
+	if h.cfg.TelegramWebhookSecret != "" && secretToken != h.cfg.TelegramWebhookSecret {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid secret token"})
+		return
+	}
+
+	var update TelegramUpdate
+
+	if err := c.ShouldBindJSON(&update); err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "ignored - bad request"})
+		return
+	}
+
+	if update.Message.Text == "" || update.Message.From.ID == 0 {
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+		return
+	}
+
+	userIdString := strconv.FormatInt(update.Message.From.ID, 10)
+
+	assistant, err := h.db.GetAssistant(c.Request.Context(), assistantId)
+	if err != nil {
+		fmt.Printf("HandleTelegramWebhook: Failed to get assistant: %v\n", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "assistant unavailable"})
+		return
+	}
+
+	if assistant.TelegramBotToken == "" {
+		fmt.Printf("HandleTelegramWebhook: Assistant %s does not have a telegram bot token configured\n", assistantId)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+		return
+	}
+
+	task := telegram.TelegramTask{
+		BotToken:    assistant.TelegramBotToken,
+		ChatID:      update.Message.Chat.ID,
+		UserID:      userIdString,
+		AssistantID: assistantId,
+		UserMessage: update.Message.Text,
+		UpdateID:    update.UpdateID,
+	}
+
+	if !h.orchestrator.Enqueue(task) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "telegram queue full"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *AIHandler) SendMessage(c *gin.Context) {
+	header := c.GetHeader("Authorization")
+	if header == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
+		return
+	}
+	parts := strings.Fields(header)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid Authorization format"})
+		return
+	}
+	ctx := c.Request.Context()
+	assistant, err := h.db.GetAssistantByAPIToken(ctx, parts[1])
+	if errors.Is(err, database.ErrNotFound) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "token not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "could not verify assistant token"})
+		return
+	}
+	response, err := h.LLM.Conversation(ctx, assistant.UserId, assistant.Id, c.PostForm("user_message"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"answer": response})
+}

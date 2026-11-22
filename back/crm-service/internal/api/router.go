@@ -1,0 +1,114 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"crm-service/internal/app"
+	"crm-service/internal/modules/database"
+	"crm-service/internal/modules/membership"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+func NewRouter(a *app.App) *gin.Engine {
+	router := gin.New()
+	// Search terms can contain a customer's email address or phone number.
+	router.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
+		return fmt.Sprintf("%s %s %d %s %s\n", p.Method, p.Request.URL.Path, p.StatusCode, p.Latency, p.ErrorMessage)
+	}), gin.Recovery())
+	records := router.Group("/workspaces/:workspace_id", authorize(a.Access))
+	h := handlers{db: a.DB}
+	records.GET("/companies", h.listCompanies)
+	records.POST("/companies", h.writeCompany)
+	records.GET("/companies/:id", h.getCompany)
+	records.PATCH("/companies/:id", h.writeCompany)
+	records.GET("/contacts", h.listContacts)
+	records.POST("/contacts", h.writeContact)
+	records.GET("/contacts/:id", h.getContact)
+	records.PATCH("/contacts/:id", h.writeContact)
+	return router
+}
+
+type accessChecker interface {
+	Role(ctx context.Context, workspaceID, userID string) (string, error)
+}
+
+func authorize(access accessChecker) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetHeader("X-User-Id")
+		if userID == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			return
+		}
+		workspaceID := strings.ToLower(c.Param("workspace_id"))
+		if !validID(workspaceID) {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace_id"})
+			return
+		}
+		role, err := access.Role(c.Request.Context(), workspaceID, userID)
+		if errors.Is(err, membership.ErrNotFound) {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "workspace not found"})
+			return
+		}
+		if err != nil {
+			_ = c.Error(err)
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace access unavailable"})
+			return
+		}
+		scope := database.Scope{WorkspaceID: workspaceID, UserID: userID}
+		switch role {
+		case "admin", "head_of_sales":
+			scope.All = true
+		case "sales_manager":
+			scope.All = false
+		case "support":
+			if c.Request.Method != http.MethodGet {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "write access denied"})
+				return
+			}
+			scope.All = true
+		default:
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+		if id := c.Param("id"); id != "" && !validID(id) {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid record id"})
+			return
+		}
+		c.Set("crm_scope", scope)
+		c.Next()
+	}
+}
+
+func validID(value string) bool {
+	return len(value) == 36 && uuid.Validate(value) == nil
+}
+
+func scope(c *gin.Context) database.Scope {
+	return c.MustGet("crm_scope").(database.Scope)
+}
+
+func recordID(c *gin.Context) string {
+	return strings.ToLower(c.Param("id"))
+}
+
+type handlers struct {
+	db *database.Store
+}
+
+func recordResponse(c *gin.Context, status int, data any, err error) {
+	switch {
+	case err == nil:
+		c.JSON(status, data)
+	case errors.Is(err, database.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "record not found"})
+	default:
+		_ = c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "record operation failed"})
+	}
+}
