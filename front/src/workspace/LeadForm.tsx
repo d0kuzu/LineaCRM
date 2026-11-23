@@ -4,7 +4,8 @@ import { ApiError } from '../crm/http';
 import { CompanyPicker } from './CompanyPicker';
 import { StageSelect } from './DealStage';
 import { DealParameterFields, parameterChanges, parameterDraft } from './DealParameters';
-import { accessError, errorMessage, useCustomerData, type Customer, type Member } from './customerData';
+import { accessError, errorMessage, useCustomerData, type Customer } from './customerData';
+import { canChangeOwner, SalesOwnerSelect, useSalesOwners } from './SalesOwner';
 import type { Lead, SalesKind } from './salesData';
 
 export type LinkedContact = { id: string; name?: string };
@@ -195,7 +196,7 @@ export function LeadForm({
   onReload?: () => void;
 }) {
   const { request, workspace, profile } = useCrm();
-  const canAssign = !convert && (workspace.role === 'admin' || workspace.role === 'head_of_sales');
+  const canAssign = !convert && canChangeOwner(workspace.role);
   const [title, setTitle] = useState(lead?.title ?? '');
   const [description, setDescription] = useState(lead?.description ?? '');
   const [owner, setOwner] = useState(lead?.owner_id ?? profile.id);
@@ -203,22 +204,12 @@ export function LeadForm({
   const [stage, setStage] = useState('');
   const [parameters, setParameters] = useState(() => parameterDraft());
   const [contacts, setContacts] = useState<LinkedContact[]>([]);
-  const [teamRevision, setTeamRevision] = useState(0);
-  const roster = useCustomerData<Member[]>(
-    canAssign ? '/auth/workspaces/' + workspace.id + '/members' : null,
-    teamRevision,
-  );
-  const team = (roster?.data ?? []).filter((member) =>
-    ['admin', 'head_of_sales', 'sales_manager'].includes(member.role),
-  );
+  const roster = useSalesOwners(canAssign, onDenied);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const active = useRef<AbortController | null>(null);
   useEffect(() => () => active.current?.abort(), []);
-  useEffect(() => {
-    if (accessError(roster?.error)) onDenied(roster?.error);
-  }, [roster?.error, onDenied]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (active.current) return;
@@ -310,33 +301,12 @@ export function LeadForm({
               />
             </label>
             {canAssign && (
-              <label className="customer-wide">
-                Owner
-                <select
-                  aria-label="Owner"
-                  value={owner}
-                  disabled={!roster?.data}
-                  onChange={(e) => setOwner(e.target.value)}
-                >
-                  {!team.some((member) => member.user_id === owner) && (
-                    <option value={owner}>{owner === profile.id ? profile.email : owner}</option>
-                  )}
-                  {team.map((member) => (
-                    <option key={member.user_id} value={member.user_id}>
-                      {member.email || member.user_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {canAssign && !roster && <small role="status">Loading team members…</small>}
-            {roster?.error != null && (
-              <p role="alert" className="customer-error">
-                Could not load team members.{' '}
-                <button type="button" className="ws-text-button" onClick={() => setTeamRevision((n) => n + 1)}>
-                  Retry members
-                </button>
-              </p>
+              <SalesOwnerSelect
+                owner={owner}
+                label={owner === profile.id ? profile.email : owner}
+                roster={roster}
+                onChange={setOwner}
+              />
             )}
           </>
         )}

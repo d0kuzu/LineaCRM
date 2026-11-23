@@ -69,8 +69,33 @@ function SalesDirectory({
   const [page, setPage] = useState(0);
   const [creating, setCreating] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [resume, setResume] = useState(0);
   const [notice, setNotice] = useState('');
   const refresh = useCallback(() => setRevision((n) => n + 1), []);
+  useEffect(() => {
+    let away = document.hidden;
+    const left = () => {
+      away = true;
+    };
+    const returned = () => {
+      if (!away || document.hidden) return;
+      away = false;
+      setResume((n) => n + 1);
+      refresh();
+    };
+    const visibility = () => {
+      if (document.hidden) left();
+      else returned();
+    };
+    window.addEventListener('blur', left);
+    window.addEventListener('focus', returned);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      window.removeEventListener('blur', left);
+      window.removeEventListener('focus', returned);
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, [refresh]);
   const unavailable = useCallback(() => {
     setBoardDenied(true);
     setBoardStatus('');
@@ -336,15 +361,17 @@ function SalesDirectory({
                         )}
                         <td>
                           {'deal_id' in row ? (
-                            row.deal_id ? (
+                            row.converted ? (
                               'Converted'
                             ) : (
                               'Open'
                             )
-                          ) : (
+                          ) : row.lead_id ? (
                             <a className="customer-relation-link" href={salesLink('leads', row.lead_id)}>
                               View lead
                             </a>
+                          ) : (
+                            'Unavailable'
                           )}
                         </td>
                         <td>
@@ -379,6 +406,7 @@ function SalesDirectory({
           key={id}
           kind={kind}
           id={id}
+          resume={resume}
           pipelines={pipelines?.error ? [] : pipelines?.data}
           ownerLabel={ownerLabel}
           onClose={closed}

@@ -36,7 +36,7 @@ func TestLeadOwnershipSearchAndEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	first, err := db.CreateLead(ctx, leader, LeadInput{Title: str("A"), Description: str("ПРОЕКТ ҚҰС 50%"), OwnerID: &seller.UserID})
-	if err != nil || first.OwnerID != seller.UserID || first.DealID != nil || first.CreatedAt.IsZero() {
+	if err != nil || first.OwnerID != seller.UserID || first.Converted || first.DealID != nil || first.CreatedAt.IsZero() {
 		t.Fatal(first, err)
 	}
 	second := newLead(t, db, seller, "Second")
@@ -148,11 +148,11 @@ func TestConcurrentLeadConversionAndRollback(t *testing.T) {
 		}
 		original = got.deal
 	}
-	if successes != 1 || original.LeadID != lead.ID || original.OwnerID != owner.UserID {
+	if successes != 1 || original.LeadID == nil || *original.LeadID != lead.ID || original.OwnerID != owner.UserID {
 		t.Fatal(successes, original)
 	}
 	converted, err := db.GetLead(ctx, owner, lead.ID)
-	if err != nil || converted.DealID == nil || *converted.DealID != original.ID {
+	if err != nil || !converted.Converted || converted.DealID == nil || *converted.DealID != original.ID {
 		t.Fatal(converted, err)
 	}
 	for _, term := range []string{"сделка", "құс", "_"} {

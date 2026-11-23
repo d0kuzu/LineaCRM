@@ -11,6 +11,7 @@ import {
 } from './customerData';
 import { DealLinkFields, LeadForm, type LinkedContact } from './LeadForm';
 import { MoveDeal } from './DealStage';
+import { canChangeOwner, ChangeDealOwner } from './SalesOwner';
 import { EditDealParameters, amountLabel, probabilityLabel } from './DealParameters';
 import { RecordHistory } from './RecordHistory';
 import {
@@ -27,11 +28,11 @@ import { Fields, RecordDialog } from './shared';
 function RelatedRecord({
   kind,
   id,
-  onDenied,
+  onUnavailable,
 }: {
   kind: 'leads' | 'companies' | 'contacts';
   id: string;
-  onDenied: (error: unknown) => void;
+  onUnavailable: (related: string) => void;
 }) {
   const { workspace } = useCrm();
   const [revision, setRevision] = useState(0);
@@ -40,8 +41,8 @@ function RelatedRecord({
     revision,
   );
   useEffect(() => {
-    if (accessError(result?.error)) onDenied(result?.error);
-  }, [result?.error, onDenied]);
+    if (accessError(result?.error)) onUnavailable(kind + '/' + id);
+  }, [result?.error, onUnavailable, kind, id]);
   if (!result) return <span role="status">Loading…</span>;
   if (!result.data)
     return (
@@ -59,16 +60,20 @@ function RelatedRecord({
   );
 }
 
-function DealRelations({ deal, onDenied }: { deal: Deal; onDenied: (error: unknown) => void }) {
+function DealRelations({ deal, onUnavailable }: { deal: Deal; onUnavailable: (related: string) => void }) {
   const [page, setPage] = useState(0);
   const ids = deal.contact_ids ?? [];
   return (
     <section className="sales-relations">
       <h3>Source lead</h3>
-      <RelatedRecord kind="leads" id={deal.lead_id} onDenied={onDenied} />
+      {deal.lead_id ? (
+        <RelatedRecord kind="leads" id={deal.lead_id} onUnavailable={onUnavailable} />
+      ) : (
+        <p className="ws-subtext">Source lead unavailable.</p>
+      )}
       <h3>Company</h3>
       {deal.company_id ? (
-        <RelatedRecord kind="companies" id={deal.company_id} onDenied={onDenied} />
+        <RelatedRecord kind="companies" id={deal.company_id} onUnavailable={onUnavailable} />
       ) : (
         <p className="ws-subtext">No visible company link.</p>
       )}
@@ -77,7 +82,7 @@ function DealRelations({ deal, onDenied }: { deal: Deal; onDenied: (error: unkno
         <ul className="customer-linked">
           {ids.slice(page * 10, page * 10 + 10).map((id) => (
             <li key={id}>
-              <RelatedRecord kind="contacts" id={id} onDenied={onDenied} />
+              <RelatedRecord kind="contacts" id={id} onUnavailable={onUnavailable} />
             </li>
           ))}
         </ul>
@@ -195,6 +200,7 @@ export function SalesCard({
   kind,
   id,
   ownerLabel,
+  resume,
   pipelines,
   onClose,
   onChanged,
@@ -202,17 +208,29 @@ export function SalesCard({
   kind: SalesKind;
   id: string;
   ownerLabel: (owner: string) => string;
+  resume: number;
   pipelines?: Pipeline[];
   onClose: () => void;
   onChanged: () => void;
 }) {
   const { workspace } = useCrm();
   const { locale } = useLocale();
-  const [mode, setMode] = useState<'view' | 'edit' | 'convert' | 'parameters' | 'move'>('view');
+  const [mode, setMode] = useState<'view' | 'edit' | 'convert' | 'parameters' | 'move' | 'owner'>('view');
+  const [editStarted, setEditStarted] = useState(resume);
+  const [accessRetry, setAccessRetry] = useState(0);
   const [revision, setRevision] = useState(0);
   const [denied, setDenied] = useState(false);
+  const rechecked = useRef(new Set<string>());
   const base = '/crm/workspaces/' + workspace.id;
-  const result = useCustomerData<Lead | Deal>(denied ? null : base + '/' + kind + '/' + id, revision);
+  const path = base + '/' + kind + '/' + id;
+  const result = useCustomerData<Lead | Deal>(
+    denied ? null : path,
+    revision + (mode === 'view' ? resume : editStarted),
+  );
+  // Keep the original values for an active draft, and verify its access separately on return.
+  const checkDraft = mode !== 'view' && resume !== editStarted;
+  const permission = useCustomerData<Lead | Deal>(checkDraft && !denied ? path : null, resume + accessRetry);
+  const convertedWhileEditing = permission?.data && 'converted' in permission.data && permission.data.converted;
   const onDenied = useCallback(() => {
     setMode('view');
     setDenied(true);
@@ -221,7 +239,26 @@ export function SalesCard({
   useEffect(() => {
     if (accessError(result?.error)) onDenied();
   }, [result?.error, onDenied]);
+  useEffect(() => {
+    if (accessError(permission?.error)) onDenied();
+    else if (convertedWhileEditing) setMode('view');
+  }, [permission?.error, convertedWhileEditing, onDenied]);
+  function startEditing(next: Exclude<typeof mode, 'view'>) {
+    setEditStarted(resume);
+    setMode(next);
+  }
+  const onRelationUnavailable = useCallback(
+    (related: string) => {
+      // Recheck the deal itself once if a related record changes visibility between reads.
+      if (rechecked.current.has(related)) return;
+      rechecked.current.add(related);
+      setRevision((n) => n + 1);
+      onChanged();
+    },
+    [onChanged],
+  );
   function reload() {
+    rechecked.current.clear();
     setMode('view');
     setDenied(false);
     setRevision((n) => n + 1);
@@ -238,11 +275,21 @@ export function SalesCard({
     edit: lead ? 'Edit lead' : 'Edit deal links',
     parameters: 'Edit deal parameters',
     move: 'Move deal',
+    owner: 'Change owner',
   };
   const title = (!denied && titles[mode]) || (kind === 'leads' ? 'Lead' : 'Deal');
   return (
     <RecordDialog title={title} onClose={onClose}>
-      <div className="customer-card">
+      {checkDraft && !permission && <p role="status">Checking record access…</p>}
+      {checkDraft && permission?.error != null && !accessError(permission.error) && (
+        <p role="alert" className="customer-error">
+          {errorMessage(permission.error)}{' '}
+          <button className="ws-text-button" onClick={() => setAccessRetry((n) => n + 1)}>
+            Retry access check
+          </button>
+        </p>
+      )}
+      <div className="customer-card" hidden={checkDraft && (!permission?.data || !!convertedWhileEditing)}>
         {denied || result?.error != null ? (
           <p role="alert" className="customer-error">
             {denied || accessError(result?.error)
@@ -254,7 +301,7 @@ export function SalesCard({
           </p>
         ) : !row ? (
           <p role="status">Loading record…</p>
-        ) : canWrite && mode !== 'view' && lead && !lead.deal_id ? (
+        ) : canWrite && mode !== 'view' && lead && !lead.converted ? (
           <LeadForm
             lead={lead}
             convert={mode === 'convert'}
@@ -265,6 +312,14 @@ export function SalesCard({
               reload();
               window.location.hash = salesLink(nextKind, nextID);
             }}
+          />
+        ) : mode === 'owner' && deal && canChangeOwner(workspace.role) ? (
+          <ChangeDealOwner
+            deal={deal}
+            ownerLabel={ownerLabel}
+            onSaved={reload}
+            onCancel={() => setMode('view')}
+            onDenied={onDenied}
           />
         ) : canWrite && mode === 'edit' && deal ? (
           <EditDealLinks deal={deal} onSaved={reload} onCancel={() => setMode('view')} onDenied={onDenied} />
@@ -285,7 +340,7 @@ export function SalesCard({
                 ['Created', timestamp(row.created_at, locale)],
                 ...(lead
                   ? ([
-                      ['Status', lead.deal_id ? 'Converted' : 'Open'],
+                      ['Status', lead.converted ? 'Converted' : 'Open'],
                       ['Updated', timestamp(lead.updated_at, locale)],
                     ] as [string, string][])
                   : []),
@@ -314,13 +369,15 @@ export function SalesCard({
                     <a className="ws-action" href={salesLink('deals', lead.deal_id)}>
                       Open deal
                     </a>
+                  ) : lead.converted ? (
+                    <span className="ws-subtext">Converted deal unavailable.</span>
                   ) : (
                     canWrite && (
                       <>
-                        <button className="ws-action" onClick={() => setMode('convert')}>
+                        <button className="ws-action" onClick={() => startEditing('convert')}>
                           Convert to deal
                         </button>
-                        <button className="ws-pill" onClick={() => setMode('edit')}>
+                        <button className="ws-pill" onClick={() => startEditing('edit')}>
                           Edit lead
                         </button>
                       </>
@@ -333,18 +390,23 @@ export function SalesCard({
               <>
                 {canWrite && (
                   <div className="customer-actions">
-                    <button className="ws-action" onClick={() => setMode('move')}>
+                    <button className="ws-action" onClick={() => startEditing('move')}>
                       Move deal
                     </button>
-                    <button className="ws-pill" onClick={() => setMode('parameters')}>
+                    <button className="ws-pill" onClick={() => startEditing('parameters')}>
                       Edit parameters
                     </button>
-                    <button className="ws-pill" onClick={() => setMode('edit')}>
+                    <button className="ws-pill" onClick={() => startEditing('edit')}>
                       Edit links
                     </button>
+                    {canChangeOwner(workspace.role) && (
+                      <button className="ws-pill" onClick={() => startEditing('owner')}>
+                        Change owner
+                      </button>
+                    )}
                   </div>
                 )}
-                <DealRelations deal={deal} onDenied={onDenied} />
+                <DealRelations deal={deal} onUnavailable={onRelationUnavailable} />
                 <RecordHistory
                   kind="deal"
                   recordPath={base + '/deals/' + deal.id}

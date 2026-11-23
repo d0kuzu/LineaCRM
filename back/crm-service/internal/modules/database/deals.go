@@ -15,7 +15,7 @@ type Deal struct {
 	ID          string    `json:"id"`
 	WorkspaceID string    `json:"workspace_id"`
 	OwnerID     string    `json:"owner_id"`
-	LeadID      string    `json:"lead_id"`
+	LeadID      *string   `json:"lead_id"`
 	PipelineID  string    `json:"pipeline_id"`
 	StageID     string    `json:"stage_id"`
 	Status      string    `json:"status"`
@@ -46,6 +46,7 @@ type ConversionInput struct {
 
 type DealUpdateInput struct {
 	DealTermsPatch
+	OwnerID          *string  `json:"owner_id"`
 	StageID          *string  `json:"stage_id"`
 	CompanyID        *string  `json:"company_id"`
 	AddContactIDs    []string `json:"add_contact_ids"`
@@ -53,21 +54,22 @@ type DealUpdateInput struct {
 }
 
 var (
-	ErrDealContactLimit = errors.New("a deal can link up to 100 contacts")
-	ErrDealLinkConflict = errors.New("cannot add and remove the same contact")
+	ErrDealOwnerForbidden = errors.New("only a workspace administrator or head of sales can assign a deal")
+	ErrDealContactLimit   = errors.New("a deal can link up to 100 contacts")
+	ErrDealLinkConflict   = errors.New("cannot add and remove the same contact")
 )
 
 const dealSummaryFields = `d.id, d.owner_id, d.title, d.created_at, d.stage_id, stage.pipeline_id, stage.kind AS status,
 		d.amount::text AS amount, d.currency, to_char(d.expected_close_date, 'YYYY-MM-DD') AS expected_close_date, d.probability`
 
-// Stored links survive changes to customer ownership. Project only the
-// customer IDs the current reader can access, including on conversion retries.
-const readDeals = `SELECT ` + dealSummaryFields + `, d.workspace_id, d.lead_id, company.id AS company_id,
+// The source lead and linked customers each retain their own owner on transfer.
+const readDeals = `SELECT ` + dealSummaryFields + `, d.workspace_id, source.id AS lead_id, company.id AS company_id,
 		ARRAY(SELECT c.id FROM deal_contacts link
 		      JOIN contacts c ON c.workspace_id = link.workspace_id AND c.id = link.contact_id
 		      WHERE link.workspace_id = d.workspace_id AND link.deal_id = d.id AND ($3 OR c.owner_id = $2)
 		      ORDER BY link.position, c.id) AS contact_ids
 	FROM deals d JOIN pipeline_stages stage ON stage.workspace_id=d.workspace_id AND stage.id=d.stage_id
+	LEFT JOIN leads source ON source.workspace_id=d.workspace_id AND source.id=d.lead_id AND ($3 OR source.owner_id=$2)
 	LEFT JOIN companies company
 	     ON company.workspace_id = d.workspace_id AND company.id = d.company_id AND ($3 OR company.owner_id = $2)
 	WHERE ` + visibleDeal
@@ -149,22 +151,29 @@ func (s *Store) UpdateDeal(ctx context.Context, scope Scope, id string, input De
 			return err
 		}
 		var currentCompany *string
-		var stageID string
+		var stageID, ownerID string
 		var previous DealTerms
-		err := tx.QueryRow(ctx, `SELECT company_id, stage_id, amount::text, currency, to_char(expected_close_date, 'YYYY-MM-DD'), probability
+		err := tx.QueryRow(ctx, `SELECT company_id, stage_id, owner_id, amount::text, currency, to_char(expected_close_date, 'YYYY-MM-DD'), probability
 			FROM deals WHERE workspace_id = $1 AND ($3 OR owner_id = $2) AND id = $4 FOR UPDATE`,
-			scope.WorkspaceID, scope.UserID, scope.All, id).Scan(&currentCompany, &stageID, &previous.Amount, &previous.Currency, &previous.ExpectedCloseDate, &previous.Probability)
+			scope.WorkspaceID, scope.UserID, scope.All, id).Scan(&currentCompany, &stageID, &ownerID, &previous.Amount, &previous.Currency, &previous.ExpectedCloseDate, &previous.Probability)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
+		if input.OwnerID != nil && !scope.AssignDeals {
+			return ErrDealOwnerForbidden
+		}
 		next, err := input.DealTermsPatch.apply(previous)
 		if err != nil {
 			return err
 		}
 		changes := next.changesFrom(previous)
+		if input.OwnerID != nil && *input.OwnerID != ownerID {
+			changes["owner_id"] = FieldChange{Before: ownerID, After: *input.OwnerID}
+			ownerID = *input.OwnerID
+		}
 		if input.StageID != nil && *input.StageID != stageID {
 			if err := stageChanges(ctx, tx, scope.WorkspaceID, stageID, *input.StageID, changes); err != nil {
 				return err
@@ -188,8 +197,8 @@ func (s *Store) UpdateDeal(ctx context.Context, scope Scope, id string, input De
 		}
 		if input.CompanyID != nil || len(changes) > 0 {
 			_, err := tx.Exec(ctx, `UPDATE deals SET company_id = $3, amount = $4::text::numeric, currency = $5,
-				expected_close_date = $6::text::date, probability = $7, stage_id = $8 WHERE workspace_id = $1 AND id = $2`,
-				scope.WorkspaceID, id, currentCompany, next.Amount, next.Currency, next.ExpectedCloseDate, next.Probability, stageID)
+				expected_close_date = $6::text::date, probability = $7, stage_id = $8, owner_id = $9 WHERE workspace_id = $1 AND id = $2`,
+				scope.WorkspaceID, id, currentCompany, next.Amount, next.Currency, next.ExpectedCloseDate, next.Probability, stageID, ownerID)
 			if err != nil {
 				return err
 			}
@@ -220,8 +229,15 @@ func (s *Store) ConvertLead(ctx context.Context, scope Scope, id string, input C
 		if err != nil {
 			return err
 		}
-		if lead.DealID != nil {
+		if lead.Converted {
+			if lead.DealID == nil {
+				return ErrLeadConverted
+			}
 			deal, err = one[Deal](tx.Query(ctx, dealByID, scope.WorkspaceID, scope.UserID, scope.All, *lead.DealID))
+			if errors.Is(err, ErrNotFound) {
+				// Ownership may have changed since the lead projection was read.
+				return ErrLeadConverted
+			}
 			return err
 		}
 		terms, err := input.DealTermsPatch.apply(DealTerms{})

@@ -63,7 +63,7 @@ export function Search() {
             href: '#/customers/contacts/' + record.id,
           })),
           ...leads.map(lead => ({
-            type: 'lead' as const, title: lead.title, company: '', subtitle: lead.deal_id ? 'Converted' : 'Open',
+            type: 'lead' as const, title: lead.title, company: '', subtitle: lead.converted ? 'Converted' : 'Open',
             href: salesLink('leads', lead.id),
           })),
           ...liveDeals.map(deal => ({

@@ -21,6 +21,7 @@ type Lead struct {
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	DealID      *string   `json:"deal_id"`
+	Converted   bool      `json:"converted"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -32,8 +33,10 @@ type LeadInput struct {
 }
 
 const leadFields = "l.id, l.workspace_id, l.owner_id, l.title, l.description, l.created_at, l.updated_at"
-const readLeads = "SELECT " + leadFields + `, d.id AS deal_id FROM leads l
-	LEFT JOIN deals d ON d.workspace_id = l.workspace_id AND d.lead_id = l.id AND ($3 OR d.owner_id = $2)
+const unconvertedLead = leadFields + ", NULL::text AS deal_id, false AS converted"
+const readLeads = "SELECT " + leadFields + `, d.id IS NOT NULL AS converted,
+	CASE WHEN $3 OR d.owner_id = $2 THEN d.id END AS deal_id FROM leads l
+	LEFT JOIN deals d ON d.workspace_id = l.workspace_id AND d.lead_id = l.id
 	WHERE l.workspace_id = $1 AND ($3 OR l.owner_id = $2)`
 
 func leadOwner(scope Scope, ownerID *string, fallback string) (string, error) {
@@ -54,7 +57,7 @@ func (s *Store) CreateLead(ctx context.Context, scope Scope, input LeadInput) (L
 	return one[Lead](s.pool.Query(ctx, `
 		INSERT INTO leads AS l (workspace_id, id, owner_id, title, description)
 		VALUES ($1, $2, $3, $4, COALESCE($5, ''))
-		RETURNING `+leadFields+`, NULL::text AS deal_id`, scope.WorkspaceID, uuid.NewString(), owner, input.Title, input.Description))
+		RETURNING `+unconvertedLead, scope.WorkspaceID, uuid.NewString(), owner, input.Title, input.Description))
 }
 
 func (s *Store) GetLead(ctx context.Context, scope Scope, id string) (Lead, error) {
@@ -68,17 +71,17 @@ func (s *Store) ListLeads(ctx context.Context, scope Scope, query string, limit,
 }
 
 func lockLead(ctx context.Context, tx pgx.Tx, scope Scope, id string) (Lead, error) {
-	lead, err := one[Lead](tx.Query(ctx, "SELECT "+leadFields+`, NULL::text AS deal_id FROM leads l
-		WHERE l.workspace_id = $1 AND ($3 OR l.owner_id = $2) AND l.id = $4 FOR UPDATE`,
-		scope.WorkspaceID, scope.UserID, scope.All, id))
+	var lockedID string
+	err := tx.QueryRow(ctx, `SELECT id FROM leads WHERE workspace_id = $1 AND ($3 OR owner_id = $2) AND id = $4 FOR UPDATE`,
+		scope.WorkspaceID, scope.UserID, scope.All, id).Scan(&lockedID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Lead{}, ErrNotFound
+	}
 	if err != nil {
 		return Lead{}, err
 	}
-	// Read the unique conversion in a new statement after obtaining the lock.
-	// A concurrent conversion may have committed while this transaction waited.
-	err = tx.QueryRow(ctx, "SELECT (SELECT id FROM deals WHERE workspace_id = $1 AND lead_id = $2)",
-		scope.WorkspaceID, id).Scan(&lead.DealID)
-	return lead, err
+	// A conversion may have committed while this transaction waited for the lock.
+	return one[Lead](tx.Query(ctx, readLeads+" AND l.id = $4", scope.WorkspaceID, scope.UserID, scope.All, lockedID))
 }
 
 func (s *Store) UpdateLead(ctx context.Context, scope Scope, id string, input LeadInput) (Lead, error) {
@@ -88,7 +91,7 @@ func (s *Store) UpdateLead(ctx context.Context, scope Scope, id string, input Le
 		if err != nil {
 			return err
 		}
-		if lead.DealID != nil {
+		if lead.Converted {
 			return ErrLeadConverted
 		}
 		owner, err := leadOwner(scope, input.OwnerID, lead.OwnerID)
@@ -104,7 +107,7 @@ func (s *Store) UpdateLead(ctx context.Context, scope Scope, id string, input Le
 			UPDATE leads AS l SET owner_id = $4, title = COALESCE($5, l.title), description = COALESCE($6, l.description),
 				updated_at = GREATEST(l.updated_at, statement_timestamp())
 			WHERE l.workspace_id = $1 AND ($3 OR l.owner_id = $2) AND l.id = $7
-			RETURNING `+leadFields+`, NULL::text AS deal_id`,
+			RETURNING `+unconvertedLead,
 			scope.WorkspaceID, scope.UserID, scope.All, owner, input.Title, input.Description, id))
 		return err
 	})

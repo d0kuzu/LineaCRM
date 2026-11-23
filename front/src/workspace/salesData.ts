@@ -15,6 +15,7 @@ export type Lead = {
   owner_id: string;
   title: string;
   description: string;
+  converted: boolean;
   deal_id: string | null;
   created_at: string;
   updated_at: string;
@@ -29,7 +30,7 @@ export type Deal = DealParameters & {
   id: string;
   workspace_id: string;
   owner_id: string;
-  lead_id: string;
+  lead_id: string | null;
   pipeline_id: string;
   stage_id: string;
   status: StageKind;

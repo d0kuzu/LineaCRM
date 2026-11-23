@@ -86,6 +86,7 @@ func authorize(access accessChecker) gin.HandlerFunc {
 		case "admin", "head_of_sales":
 			scope.All = true
 			scope.Admin = role == "admin"
+			scope.AssignDeals = true
 		case "sales_manager":
 			scope.All = false
 		case "support":
@@ -132,7 +133,7 @@ func recordResponse(c *gin.Context, status int, data any, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "record not found"})
 	case errors.Is(err, database.ErrLeadConverted):
 		c.JSON(http.StatusConflict, gin.H{"error": "this lead has already been converted"})
-	case errors.Is(err, database.ErrSalesForbidden), errors.Is(err, database.ErrPipelineForbidden):
+	case errors.Is(err, database.ErrSalesForbidden), errors.Is(err, database.ErrDealOwnerForbidden), errors.Is(err, database.ErrPipelineForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrPipelineConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})

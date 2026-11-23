@@ -22,6 +22,17 @@ func salesText(decoder *json.Decoder, name string, maxLength int) (*string, erro
 	return &text, nil
 }
 
+func salesOwnerID(decoder *json.Decoder) (*string, error) {
+	owner, err := salesText(decoder, "owner_id", 160)
+	if err != nil {
+		return nil, err
+	}
+	if *owner == "" || strings.ContainsFunc(*owner, unicode.IsControl) {
+		return nil, errors.New("invalid owner_id")
+	}
+	return owner, nil
+}
+
 func leadInput(body []byte, create bool) (database.LeadInput, error) {
 	var input database.LeadInput
 	err := decodeFieldsObject(body, false, func(name string, decoder *json.Decoder) error {
@@ -35,10 +46,7 @@ func leadInput(body []byte, create bool) (database.LeadInput, error) {
 		case "description":
 			input.Description, err = salesText(decoder, name, 4000)
 		case "owner_id":
-			input.OwnerID, err = salesText(decoder, name, 160)
-			if err == nil && (*input.OwnerID == "" || strings.ContainsFunc(*input.OwnerID, unicode.IsControl)) {
-				return errors.New("invalid owner_id")
-			}
+			input.OwnerID, err = salesOwnerID(decoder)
 		default:
 			return errors.New("unknown lead field")
 		}
@@ -145,6 +153,8 @@ func dealUpdateInput(body []byte) (database.DealUpdateInput, error) {
 			input.AddContactIDs, err = contactLinks(decoder)
 		case "remove_contact_ids":
 			input.RemoveContactIDs, err = contactLinks(decoder)
+		case "owner_id":
+			input.OwnerID, err = salesOwnerID(decoder)
 		case "stage_id":
 			input.StageID, err = stageID(decoder)
 		default:

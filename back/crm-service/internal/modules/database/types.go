@@ -5,8 +5,9 @@ import "time"
 type Scope struct {
 	WorkspaceID string
 	UserID      string
-	All         bool
+	All         bool // Workspace-wide record visibility, including for support.
 	Admin       bool
+	AssignDeals bool // Permission to change the owner of an existing deal.
 }
 
 type Company struct {
