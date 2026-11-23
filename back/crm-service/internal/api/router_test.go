@@ -50,7 +50,7 @@ func TestWorkspaceAccess(t *testing.T) {
 			})), func(c *gin.Context) {
 			s := scope(c)
 			canAssignDeals := tt.role == "head_of_sales" || tt.role == "admin"
-			if s.UserID != tt.userID || s.WorkspaceID != testWorkspace || s.All != tt.all || s.Admin != (tt.role == "admin") || s.AssignDeals != canAssignDeals {
+			if s.UserID != tt.userID || s.WorkspaceID != testWorkspace || s.All != tt.all || s.Admin != (tt.role == "admin") || s.AssignDeals != canAssignDeals || s.ReadOnly != (tt.role == "support") {
 				t.Fatalf("wrong scope for %s: %+v", tt.role, s)
 			}
 			c.Status(http.StatusOK)

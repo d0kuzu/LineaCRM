@@ -14,6 +14,7 @@ import { MoveDeal } from './DealStage';
 import { canChangeOwner, ChangeDealOwner } from './SalesOwner';
 import { EditDealParameters, amountLabel, probabilityLabel } from './DealParameters';
 import { RecordHistory } from './RecordHistory';
+import { RelatedActivities } from './RelatedActivities';
 import {
   dealLocation,
   salesLink,
@@ -407,6 +408,7 @@ export function SalesCard({
                   </div>
                 )}
                 <DealRelations deal={deal} onUnavailable={onRelationUnavailable} />
+                <RelatedActivities parent={{ field: 'deal_id', id: deal.id, label: deal.title }}/>
                 <RecordHistory
                   kind="deal"
                   recordPath={base + '/deals/' + deal.id}

@@ -36,6 +36,14 @@ func NewRouter(a *app.App) *gin.Engine {
 	records.GET("/deals/:id", getSalesRecord(a.DB.GetDeal))
 	records.PATCH("/deals/:id", h.updateDeal)
 	records.GET("/deals/:id/history", historyHandler(a.DB.DealHistory))
+	records.GET("/tasks", activityList(a.DB.ListTasks, true))
+	records.POST("/tasks", h.writeTask)
+	records.GET("/tasks/:id", getSalesRecord(a.DB.GetTask))
+	records.PATCH("/tasks/:id", h.writeTask)
+	records.GET("/meetings", activityList(a.DB.ListMeetings, false))
+	records.POST("/meetings", h.writeMeeting)
+	records.GET("/meetings/:id", getSalesRecord(a.DB.GetMeeting))
+	records.PATCH("/meetings/:id", h.writeMeeting)
 	fields := records.Group("/fields/:kind", fieldKind)
 	fields.GET("", h.listFields)
 	fields.POST("", requireFieldAdmin, h.writeField)
@@ -90,6 +98,7 @@ func authorize(access accessChecker) gin.HandlerFunc {
 		case "sales_manager":
 			scope.All = false
 		case "support":
+			scope.ReadOnly = true
 			if c.Request.Method != http.MethodGet {
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "write access denied"})
 				return
@@ -133,13 +142,13 @@ func recordResponse(c *gin.Context, status int, data any, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "record not found"})
 	case errors.Is(err, database.ErrLeadConverted):
 		c.JSON(http.StatusConflict, gin.H{"error": "this lead has already been converted"})
-	case errors.Is(err, database.ErrSalesForbidden), errors.Is(err, database.ErrDealOwnerForbidden), errors.Is(err, database.ErrPipelineForbidden):
+	case errors.Is(err, database.ErrSalesForbidden), errors.Is(err, database.ErrDealOwnerForbidden), errors.Is(err, database.ErrPipelineForbidden), errors.Is(err, database.ErrActivityForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrPipelineConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrDealContactLimit), errors.Is(err, database.ErrDealLinkConflict), errors.Is(err, database.ErrInvalidDealTerms):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	case errors.Is(err, database.ErrInvalidField), errors.Is(err, database.ErrInvalidPipeline):
+	case errors.Is(err, database.ErrInvalidField), errors.Is(err, database.ErrInvalidPipeline), errors.Is(err, database.ErrInvalidActivity):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrFieldConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "a field with that label already exists"})

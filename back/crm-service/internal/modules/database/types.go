@@ -8,6 +8,7 @@ type Scope struct {
 	All         bool // Workspace-wide record visibility, including for support.
 	Admin       bool
 	AssignDeals bool // Permission to change the owner of an existing deal.
+	ReadOnly    bool // Workspace-wide support access.
 }
 
 type Company struct {

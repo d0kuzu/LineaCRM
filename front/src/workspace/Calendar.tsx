@@ -1,56 +1,197 @@
 import { useState } from 'react';
+import { useCrm } from '../crm/session';
 import { useLocale } from '../i18n';
-import { meetings, workspaceDate } from '../overview/data';
-import { dateLabel, timeLabel } from './format';
-import { Fields, PageTitle, RecordDialog, Switcher } from './shared';
-
-const days = Array.from({ length: 7 }, (_, i) => '2026-11-' + String(i + 2).padStart(2, '0'));
-const hours = Array.from({ length: 8 }, (_, i) => i + 9);
-export const calendarActivities = [
-  ['2026-11-02T10:00:00Z', 'sync', null], ['2026-11-03T13:00:00Z', 'meeting', 'Qala Studio'],
-  ['2026-11-04T14:00:00Z', 'call', 'Terra Logistics'], ['2026-11-05T12:00:00Z', 'pilot', 'Sary Lab'],
-  ['2026-11-06T15:00:00Z', 'proposal', 'Orbita'],
-] as const;
-const types = { orbita: 'demo', tochka: 'terms', atlas: 'procurement' } as const;
-interface Appointment { start: string; title: string; company: string; href?: string }
-
+import { CreateActivityDialog } from './ActivityForm';
+import { activityHref, localDay, shiftDay, useActivityRevision, type CrmMeeting } from './activities';
+import { accessError, errorMessage, useCustomerData } from './customerData';
+import { PageTitle, Switcher } from './shared';
+import './activities.css';
+const pageSize = 35;
+function endOfDay(day: string) {
+  const next = new Date(day + 'T00:00');
+  next.setDate(next.getDate() + 1);
+  return next;
+}
+function weekStart(day: string) {
+  return shiftDay(day, -((new Date(day + 'T12:00').getDay() + 6) % 7));
+}
 export function Calendar() {
-  const { messages: { workspace: { calendar: copy, general }, overview }, locale } = useLocale();
-  const [view, setView] = useState<'week' | 'day'>('week');
-  const [day, setDay] = useState(workspaceDate);
-  const [selected, setSelected] = useState<Appointment | null>(null);
-  const appointments: Appointment[] = [
-    ...calendarActivities.map(([start, key, company]) => ({ start, title: copy.names[key], company: company ?? copy.team })),
-    ...meetings.map(m => ({ start: m.startsAt, title: copy.names[types[m.id]], company: overview.accounts[m.id].company, href: '#/meeting/' + m.id })),
-  ];
-  const visibleDays = view === 'week' ? days : [day];
-  const weekRange = new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).formatRange(new Date(days[0]), new Date(days[6]));
-  return <>
-    <PageTitle title={copy.title} description={view === 'week' ? copy.weekOf + ' ' + weekRange : dateLabel(day, locale, { dateStyle: 'full' })}/>
-    <div className="ws-toolbar">
-      <Switcher label={copy.title} selected={view} onSelect={setView} values={[[ 'week', copy.week ], [ 'day', copy.day ]]}/>
-      <button className="ws-pill" onClick={() => { setDay(workspaceDate); setView('day'); }}>{copy.today}</button>
-      {view === 'day' && <select aria-label={copy.selectedDay} value={day} onChange={e => setDay(e.target.value)}>{days.map(value => <option key={value} value={value}>{dateLabel(value, locale, { month: 'short', day: 'numeric', weekday: 'short' })}</option>)}</select>}
-    </div>
-    <section aria-label={copy.events} className={'ws-calendar ' + (view === 'week' ? 'ws-week' : 'ws-day')}>
-      <div className="ws-time-column"><div className="ws-date-head"/>{hours.map(hour =>
-        <time key={hour}>{timeLabel(day + 'T' + String(hour).padStart(2, '0') + ':00:00Z', locale)}</time>)}</div>
-      {visibleDays.map(date => <div className="ws-cal-col" key={date}>
-        <button className={'ws-date-head ' + (date === workspaceDate ? 'current' : '')} onClick={() => { setDay(date); setView('day'); }}>
-          <small>{dateLabel(date, locale, { weekday: 'short' })}</small><b>{dateLabel(date, locale, { day: 'numeric' })}</b>
-        </button><div className="ws-cal-hours">
-          {appointments.filter(event => event.start.startsWith(date)).map(event => {
-            const start = new Date(event.start);
-            const position = (start.getUTCHours() - 9 + start.getUTCMinutes() / 60) / hours.length * 100;
-            const inner = <><strong>{timeLabel(event.start, locale)} · {event.title}</strong><span>{event.company}</span></>;
-            return event.href
-              ? <a key={event.start} href={event.href} className={'ws-event ' + (event.href === '#/meeting/orbita' ? 'featured' : '')} style={{ top: position + '%' }}>{inner}</a>
-              : <button key={event.start} className="ws-event" style={{ top: position + '%' }} onClick={() => setSelected(event)}>{inner}</button>;
-          })}
-        </div></div>)}
-    </section>
-    {selected && <RecordDialog title={selected.title} onClose={() => setSelected(null)}>
-      <Fields rows={[[general.company, selected.company], [general.date, dateLabel(selected.start, locale, { dateStyle: 'long' })], [general.time, timeLabel(selected.start, locale)]]}/>
-    </RecordDialog>}
-  </>;
+  const { workspace } = useCrm();
+  const { locale } = useLocale();
+  const [view, setView] = useState<'day' | 'week'>('week'),
+    [day, setDay] = useState(() => localDay(new Date()));
+  const [creating, setCreating] = useState(false),
+    [page, setPage] = useState(0);
+  const [revision, refresh] = useActivityRevision();
+  const start = view === 'day' ? day : weekStart(day),
+    length = view === 'day' ? 1 : 7;
+  const days = [...new Set(Array.from({ length }, (_, i) => shiftDay(start, i)))];
+  const last = days[days.length - 1];
+  const from = new Date(start + 'T00:00');
+  const to = endOfDay(last);
+  const params = new URLSearchParams({
+    limit: String(pageSize + 1),
+    offset: String(page * pageSize),
+  });
+  // Local midnight can fall outside RFC 3339's four-digit years at either edge.
+  if (from.getUTCFullYear() >= 1) params.set('from', from.toISOString());
+  if (to.getUTCFullYear() <= 9999) params.set('to', to.toISOString());
+  const rows = useCustomerData<CrmMeeting[]>(
+    '/crm/workspaces/' + workspace.id + '/meetings?' + params,
+    revision,
+  );
+  const records = rows?.data?.slice(0, pageSize) ?? [];
+  const dateFormat = new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric' });
+  const timeFormat = new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' });
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  function go(next: string) {
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(next) ||
+      next < '0001-01-01' ||
+      localDay(new Date(next + 'T12:00')) !== next
+    )
+      return;
+    setDay(next);
+    setPage(0);
+  }
+  return (
+    <>
+      <div className="customer-page-head">
+        <PageTitle title="Calendar" description={workspace.name + ' · ' + zone} />
+        {workspace.role !== 'support' && !accessError(rows?.error) && (
+          <button className="ws-action" onClick={() => setCreating(true)}>
+            New meeting
+          </button>
+        )}
+      </div>
+      <div className="ws-toolbar customer-toolbar">
+        <Switcher
+          values={[
+            ['week', 'Week'],
+            ['day', 'Day'],
+          ]}
+          selected={view}
+          label="Calendar view"
+          onSelect={(v) => {
+            setView(v);
+            setPage(0);
+          }}
+        />
+        <div className="activity-calendar-nav">
+          <button
+            className="ws-pill"
+            disabled={start === '0001-01-01'}
+            onClick={() => go(shiftDay(day, -length))}
+          >
+            Previous {view}
+          </button>
+          <button className="ws-pill" onClick={() => go(localDay(new Date()))}>
+            Today
+          </button>
+          <button
+            className="ws-pill"
+            disabled={last === '9999-12-31'}
+            onClick={() => go(shiftDay(day, length))}
+          >
+            Next {view}
+          </button>
+          <input
+            type="date"
+            aria-label="Calendar date"
+            value={day}
+            min="0001-01-01"
+            max="9999-12-31"
+            onChange={(e) => go(e.target.value)}
+          />
+        </div>
+      </div>
+      <section className="ws-panel">
+        <div className="ws-section-head">
+          <h2>
+            {dateFormat.format(new Date(start + 'T12:00'))}
+            {view === 'week' ? ' – ' + dateFormat.format(new Date(last + 'T12:00')) : ''}
+          </h2>
+          <button className="ws-text-button" onClick={refresh}>
+            Refresh calendar
+          </button>
+        </div>
+        {!rows ? (
+          <p role="status" className="ws-empty">
+            Loading meetings…
+          </p>
+        ) : rows.error != null ? (
+          <p role="alert" className="customer-error">
+            {errorMessage(rows.error)}
+          </p>
+        ) : (
+          <div className={'activity-agenda ' + (view === 'day' ? 'activity-day' : '')}>
+            {days.map((value) => {
+              const from = new Date(value + 'T00:00'),
+                to = endOfDay(value);
+              const events = records.filter((m) => new Date(m.starts_at) < to && new Date(m.ends_at) > from);
+              return (
+                <section className="activity-agenda-day" aria-label={value} key={value}>
+                  <h3>
+                    <button
+                      className="ws-text-button"
+                      aria-label={'Open day ' + value}
+                      onClick={() => {
+                        go(value);
+                        setView('day');
+                      }}
+                    >
+                      {dateFormat.format(new Date(value + 'T12:00'))}
+                    </button>
+                  </h3>
+                  {events.map((m) => {
+                    const begin = new Date(m.starts_at),
+                      end = new Date(m.ends_at);
+                    const interval =
+                      (begin < from ? 'Continues' : timeFormat.format(begin)) +
+                      ' – ' +
+                      (end > to ? 'next day' : timeFormat.format(end));
+                    return (
+                      <a className="activity-event" key={m.id} href={activityHref('meetings', m.id)}>
+                        <small>{interval}</small>
+                        <strong>{m.title}</strong>
+                      </a>
+                    );
+                  })}
+                  {!events.length && (
+                    <small className="ws-subtext">
+                      {page > 0 || (rows?.data?.length ?? 0) > pageSize
+                        ? 'No meetings on this page.'
+                        : 'No meetings.'}
+                    </small>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        )}
+        {!rows?.error && (page > 0 || (rows?.data?.length ?? 0) > pageSize) && (
+          <nav className="customer-pager" aria-label="Calendar pages">
+            <button disabled={!page} onClick={() => setPage((n) => n - 1)}>
+              Previous page
+            </button>
+            <span>Page {page + 1}</span>
+            <button disabled={(rows?.data?.length ?? 0) <= pageSize} onClick={() => setPage((n) => n + 1)}>
+              Next page
+            </button>
+          </nav>
+        )}
+      </section>
+      {creating && !accessError(rows?.error) && (
+        <CreateActivityDialog
+          kind="meetings"
+          initialDate={day}
+          onClose={() => setCreating(false)}
+          onSaved={(row) => {
+            setCreating(false);
+            window.location.hash = activityHref('meetings', row.id);
+          }}
+        />
+      )}
+    </>
+  );
 }

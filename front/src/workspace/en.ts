@@ -1,5 +1,3 @@
-import type { CountMessage } from '../plurals';
-
 export const workspaceEn = {
   general: {
     company: 'Company', owner: 'Owner', amount: 'Amount', contact: 'Contact',
@@ -16,32 +14,6 @@ export const workspaceEn = {
     title: 'Deal pipeline', description: 'Main pipeline · 12 open deals',
     board: 'Board', list: 'List', allDeals: 'All deals', risk: 'At risk', deal: 'Deal',
     stages: { new: 'New', discovery: 'Discovery', negotiation: 'Negotiation', contract: 'Contract' },
-    opportunities: {
-      integration: 'Email integration', training: 'Team training', office: 'Office support',
-      workstations: 'Workstations', branch: 'CRM for the branch office',
-      fleet: 'Fleet upgrade', support: 'Support line',
-    },
-    activities: {
-      qualification: 'Today · Qualification', intro: 'Tomorrow · Intro call', call: '{date} · Call',
-      approval: '{date} · Approval', demo: '{date} · Demo', meeting: '{date} · Meeting',
-      todayDemo: 'Today · Demo at {time}', inactive: 'No activity for 7 days',
-      todayMeeting: 'Today · Meeting', contract: '{date} · Contract', overdue: 'Task overdue',
-    },
-  },
-  tasks: {
-    title: 'My tasks', description: 'Sales rep’s work plan', today: 'Today', completed: 'Completed',
-    dueToday: 'Due today', completedTitle: 'Completed tasks', firstFour: 'First 4 of 8 tasks · In priority order',
-    remaining: { one: '{count} priority task remaining', other: '{count} priority tasks remaining' } as CountMessage,
-    empty: 'No tasks in this view.', nextMeeting: 'Next meeting', demo: 'Product demo',
-    aim: 'Agree on who will join the pilot and when it will start.',
-    names: ['Prepare for the demo', 'Run the product demo', 'Confirm the approval deadline', 'Call the new customer'],
-    contacts: ['Orbita · CRM implementation', 'Orbita · Aliya Kim', 'Terra Logistics · Fleet upgrade', 'Qala Studio · Workstations'],
-  },
-  calendar: {
-    title: 'Calendar', weekOf: 'Week of', week: 'Week', day: 'Day', today: 'Today',
-    noEvents: 'No meetings scheduled.', events: 'Scheduled events', selectedDay: 'Choose a day',
-    names: { sync: 'Team sync', meeting: 'Meeting', demo: 'Demo', terms: 'Terms', procurement: 'Procurement', call: 'Call', pilot: 'Pilot', proposal: 'Proposal' },
-    team: 'Sales team',
   },
   inbox: {
     title: 'Inbox', description: 'Email, calls and messages in one inbox.', all: 'All activity',

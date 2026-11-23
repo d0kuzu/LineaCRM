@@ -23,7 +23,7 @@ export function RecordDialog({ title, children, onClose }: {
     if (dialog && !dialog.open) dialog.showModal();
     return () => { dialog?.close(); };
   }, []);
-  return <dialog className="ws-dialog" ref={ref} aria-label={title} onCancel={onClose}
+  return <dialog className="ws-dialog" ref={ref} aria-label={title} onCancel={event => { event.stopPropagation(); onClose(); }}
     onClick={event => { if (event.currentTarget === event.target) onClose(); }}>
     <div className="ws-dialog-inner"><header><h2>{title}</h2><button onClick={onClose} aria-label={copy.general.close} className="ws-x">×</button></header>{children}</div>
   </dialog>;

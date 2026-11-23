@@ -8,6 +8,7 @@ import { Customers } from './workspace/Customers';
 import { Sales } from './workspace/Sales';
 import { WorkspaceSection } from './workspace';
 import { DetailPage } from './details/DetailPage';
+import { ActivityDetail } from './workspace/ActivityDetail';
 
 export function App() {
   const route = useRoute();
@@ -15,7 +16,7 @@ export function App() {
   const main = useRef<HTMLElement>(null);
   const current = route.kind === 'section' ? shell.nav[route.page] : shell.pages[route.page];
   const activeSection = route.kind === 'section' ? route.page
-    : route.page === 'deal' ? 'sales' : route.page === 'meeting' ? 'calendar' : undefined;
+    : route.page === 'deal' ? 'sales' : route.page === 'meeting' ? 'calendar' : route.page === 'task' ? 'tasks' : undefined;
   const path = window.location.hash;
   const lastPath = useRef(path);
 
@@ -58,6 +59,8 @@ export function App() {
             : route.page === 'overview'
             ? <Overview /> : <WorkspaceSection key={route.page} section={route.page} />)}
           {route.kind === 'detail' && <DetailPage key={path} page={route.page} id={route.id} />}
+          {route.kind === 'activity' && <div className="workspace-section"><ActivityDetail key={path}
+            kind={route.page === 'task' ? 'tasks' : 'meetings'} id={route.id}/></div>}
           {route.kind === 'missing' && <><h1>{shell.pages.missing}</h1><a href="#/overview">{shell.returnHome}</a></>}
         </main>
       </div>
