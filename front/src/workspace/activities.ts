@@ -24,6 +24,7 @@ export type Priority = 'low' | 'normal' | 'high';
 export type CrmTask = Activity & {
   description: string;
   due_at: string;
+  reminder_minutes: number | null;
   status: 'open' | 'done';
   priority: Priority;
 };
@@ -34,6 +35,15 @@ export type CrmMeeting = Activity & {
   participant_ids: string[];
 };
 export type ActivityRecord = CrmTask | CrmMeeting;
+export const taskChangedEvent = 'linea:task-changed';
+
+export function reminderLabel(minutes: number | null, locale: string) {
+  if (minutes == null) return 'Off';
+  if (minutes === 0) return 'At the deadline';
+  const value = minutes % 1440 === 0 ? minutes / 1440 : minutes % 60 === 0 ? minutes / 60 : minutes;
+  const unit = minutes % 1440 === 0 ? 'day' : minutes % 60 === 0 ? 'hour' : 'minute';
+  return new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'long' }).format(value) + ' before';
+}
 export const activityHref = (kind: ActivityKind, id: string) =>
   '#/' + (kind === 'tasks' ? 'task' : 'meeting') + '/' + encodeURIComponent(id);
 export function canEditActivity(record: ActivityRecord, role: string, userID: string) {

@@ -28,6 +28,12 @@ func taskInput(body []byte, create bool) (database.TaskInput, error) {
 			in.Description, err = salesText(d, name, 4000)
 		case "due_at":
 			in.DueAt, err = activityTimeInput(d, name)
+		case "reminder_minutes":
+			in.ReminderMinutes.Present = true
+			err = d.Decode(&in.ReminderMinutes.Value)
+			if n := in.ReminderMinutes.Value; err != nil || n != nil && (*n < 0 || *n > database.MaxTaskReminderMinutes) {
+				return fmt.Errorf("reminder_minutes must be null or an integer between 0 and %d", database.MaxTaskReminderMinutes)
+			}
 		case "status":
 			in.Status, err = activityEnum(d, name, "open", "done")
 		case "priority":

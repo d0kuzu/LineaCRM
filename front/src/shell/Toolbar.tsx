@@ -1,5 +1,6 @@
 import { useLocale } from '../i18n';
 import { useCrm } from '../crm/session';
+import { TaskReminders } from './TaskReminders';
 
 export function Toolbar({ current }: { current: string }) {
   const { messages: { shell: copy } } = useLocale();
@@ -16,6 +17,7 @@ export function Toolbar({ current }: { current: string }) {
         <span aria-current="page">{current}</span>
       </nav>
       <div className="toolbar-actions">
+        {workspace.role !== 'support' && <TaskReminders />}
         <a href="#/search" className="toolbar-search" aria-keyshortcuts="Control+K Meta+K">
           <img src="/icons/search.svg" alt="" />{copy.pages.search}
           <kbd>{/Mac|iPhone|iPad/i.test(navigator.platform) ? copy.macSearchShortcut : copy.searchShortcut}</kbd>

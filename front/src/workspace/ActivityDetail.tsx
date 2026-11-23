@@ -6,6 +6,8 @@ import { ActivityLink } from './ActivityLinks';
 import {
   canEditActivity,
   linkTypes,
+  reminderLabel,
+  taskChangedEvent,
   useActivityRevision,
   type ActivityKind,
   type ActivityRecord,
@@ -36,7 +38,10 @@ export function TaskCompletion({ task, onChanged }: { task: CrmTask; onChanged: 
         body: JSON.stringify({ status: task.status === 'done' ? 'open' : 'done' }),
         signal: controller.signal,
       });
-      if (!controller.signal.aborted) onChanged();
+      if (!controller.signal.aborted) {
+        window.dispatchEvent(new Event(taskChangedEvent));
+        onChanged();
+      }
     } catch (cause) {
       if (!controller.signal.aborted) {
         setError(errorMessage(cause));
@@ -126,6 +131,7 @@ export function ActivityDetail({ kind, id }: { kind: ActivityKind; id: string })
                 ? [
                     ['Owner', member(record.owner_id)],
                     ['Due', timestamp(task.due_at, locale)],
+                    ['Reminder', reminderLabel(task.reminder_minutes, locale)],
                     ['Priority', task.priority],
                     ['Status', task.status === 'done' ? 'Completed' : 'Open'],
                   ]

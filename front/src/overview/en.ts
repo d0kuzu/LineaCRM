@@ -1,35 +1,4 @@
 export const overviewEn = {
-  title: 'Work overview',
-  workspaceDate: '{date} · Sales rep workspace',
-  todaysPlan: "Today's plan",
-  summary: 'Daily summary',
-  focus: 'In focus',
-  pipelineToday: 'Your pipeline today',
-  metrics: {
-    active: 'Active deals',
-    meetings: 'Meetings today',
-    tasks: "Today's tasks",
-    inactive: 'Inactive deals',
-    suggestions: 'AI suggestions',
-  },
-  activity: {
-    title: 'Deal activity',
-    subtitle: 'New and won deals over eight weeks',
-    new: 'New',
-    won: 'Won',
-    week: 'Week ending',
-  },
-  upcoming: 'Upcoming meetings',
-  agendas: 'Agendas and customer briefs',
-  attention: 'Needs attention',
-  allDeals: 'All deals',
-  columns: {
-    deal: 'Deal',
-    company: 'Company',
-    amount: 'Amount',
-    alert: 'Alert',
-    owner: 'Owner',
-  },
   owner: 'Maria Orlova',
   accounts: {
     orbita: {

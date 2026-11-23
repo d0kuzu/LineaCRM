@@ -23,6 +23,7 @@ func NewRouter(a *app.App) *gin.Engine {
 	}), gin.Recovery())
 	records := router.Group("/workspaces/:workspace_id", authorize(a.Access))
 	h := handlers{db: a.DB, access: a.Access}
+	records.GET("/overview", overviewHandler(a.DB.Overview))
 	records.GET("/pipelines", h.listPipelines)
 	records.POST("/pipelines", h.writePipeline)
 	records.PUT("/pipelines/:id", h.writePipeline)
@@ -40,6 +41,8 @@ func NewRouter(a *app.App) *gin.Engine {
 	records.POST("/tasks", h.writeTask)
 	records.GET("/tasks/:id", getSalesRecord(a.DB.GetTask))
 	records.PATCH("/tasks/:id", h.writeTask)
+	records.GET("/task-reminders", h.listTaskReminders)
+	records.POST("/tasks/:id/reminder/dismiss", h.dismissTaskReminder)
 	records.GET("/meetings", activityList(a.DB.ListMeetings, false))
 	records.POST("/meetings", h.writeMeeting)
 	records.GET("/meetings/:id", getSalesRecord(a.DB.GetMeeting))
@@ -144,7 +147,7 @@ func recordResponse(c *gin.Context, status int, data any, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": "this lead has already been converted"})
 	case errors.Is(err, database.ErrSalesForbidden), errors.Is(err, database.ErrDealOwnerForbidden), errors.Is(err, database.ErrPipelineForbidden), errors.Is(err, database.ErrActivityForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-	case errors.Is(err, database.ErrPipelineConflict):
+	case errors.Is(err, database.ErrPipelineConflict), errors.Is(err, database.ErrReminderChanged):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrDealContactLimit), errors.Is(err, database.ErrDealLinkConflict), errors.Is(err, database.ErrInvalidDealTerms):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

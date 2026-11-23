@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useCrm } from '../crm/session';
 import { AccessNotice, MemberOptions, Participants } from './ActivityMembers';
 import { ActivityLinkPicker } from './ActivityLinks';
+import { TaskReminderField } from './TaskReminderField';
 import { canChangeOwner } from './SalesOwner';
 import {
   linkTypes,
   localDateTime,
   localDay,
+  taskChangedEvent,
   type ActivityKind,
   type ActivityRecord,
   type InitialLink,
@@ -25,7 +27,7 @@ type FormProps = {
   onClose: () => void;
   onAccessChanged?: () => void;
 };
-type Payload = Record<string, string | string[] | null>;
+type Payload = Record<string, string | number | string[] | null>;
 function initialTimes(day?: string) {
   const now = new Date();
   const start = new Date(now);
@@ -61,6 +63,7 @@ export function ActivityForm({
   const [title, setTitle] = useState(record?.title ?? '');
   const [body, setBody] = useState(task?.description ?? meeting?.goal ?? '');
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'normal');
+  const [reminder, setReminder] = useState(task?.reminder_minutes?.toString() ?? '');
   const [owner, setOwner] = useState(record?.owner_id ?? profile.id);
   const [originalTimes] = useState(() => {
     if (task) return { start: localDateTime(new Date(task.due_at)), end: '' };
@@ -99,6 +102,10 @@ export function ActivityForm({
     if (elevated && owner !== (record?.owner_id ?? profile.id)) p.owner_id = owner;
     if (!record || name !== record.title) p.title = name;
     if (isTask) {
+      const minutes = reminder === '' ? null : Number(reminder);
+      if (minutes !== null && (!Number.isInteger(minutes) || minutes < 0 || minutes > 43200))
+        throw new Error('Enter a reminder between 0 and 43,200 minutes before the deadline.');
+      if (minutes !== (task?.reminder_minutes ?? null)) p.reminder_minutes = minutes;
       if (text !== (task?.description ?? '')) p.description = text;
       if (!task || priority !== task.priority) p.priority = priority;
       if (!task || start !== originalTimes.start) p.due_at = isoTime(start, 'due date and time');
@@ -147,7 +154,10 @@ export function ActivityForm({
           signal: controller.signal,
         },
       );
-      if (!controller.signal.aborted) onSaved(saved);
+      if (!controller.signal.aborted) {
+        if (isTask) window.dispatchEvent(new Event(taskChangedEvent));
+        onSaved(saved);
+      }
     } catch (cause) {
       if (!controller.signal.aborted) {
         setError(errorMessage(cause));
@@ -228,6 +238,7 @@ export function ActivityForm({
             />
           </label>
         )}
+        {isTask && <TaskReminderField value={reminder} onChange={setReminder} />}
         {!isTask && (
           <Participants
             selected={participants}

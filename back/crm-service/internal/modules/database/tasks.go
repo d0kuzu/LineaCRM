@@ -10,30 +10,32 @@ import (
 
 type Task struct {
 	ActivityLinks
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspace_id"`
-	OwnerID     string    `json:"owner_id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	DueAt       time.Time `json:"due_at"`
-	Status      string    `json:"status"`
-	Priority    string    `json:"priority"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	WorkspaceID     string    `json:"workspace_id"`
+	OwnerID         string    `json:"owner_id"`
+	Title           string    `json:"title"`
+	Description     string    `json:"description"`
+	DueAt           time.Time `json:"due_at"`
+	Status          string    `json:"status"`
+	Priority        string    `json:"priority"`
+	ReminderMinutes *int      `json:"reminder_minutes"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type TaskInput struct {
 	ActivityLinkInput
-	Title       *string    `json:"title"`
-	Description *string    `json:"description"`
-	OwnerID     *string    `json:"owner_id"`
-	DueAt       *time.Time `json:"due_at"`
-	Status      *string    `json:"status"`
-	Priority    *string    `json:"priority"`
+	Title           *string       `json:"title"`
+	Description     *string       `json:"description"`
+	OwnerID         *string       `json:"owner_id"`
+	DueAt           *time.Time    `json:"due_at"`
+	Status          *string       `json:"status"`
+	Priority        *string       `json:"priority"`
+	ReminderMinutes Optional[int] `json:"reminder_minutes"`
 }
 
 const taskVisibility = "a.workspace_id=$1 AND ($3 OR a.owner_id=$2)"
-const readTasks = `SELECT a.id,a.workspace_id,a.owner_id,a.title,a.description,a.due_at AT TIME ZONE 'UTC' AS due_at,a.status,a.priority,
+const readTasks = `SELECT a.id,a.workspace_id,a.owner_id,a.title,a.description,a.due_at AT TIME ZONE 'UTC' AS due_at,a.status,a.priority,a.reminder_minutes,
 	a.created_at AT TIME ZONE 'UTC' AS created_at,a.updated_at AT TIME ZONE 'UTC' AS updated_at,` +
 	visibleActivityLinks + " FROM tasks a " + activityJoins + " WHERE " + taskVisibility
 
@@ -81,15 +83,21 @@ func (s *Store) saveTask(ctx context.Context, scope Scope, id *string, input Tas
 		if input.Priority != nil && *input.Priority != "low" && *input.Priority != "normal" && *input.Priority != "high" {
 			return Task{}, fmt.Errorf("%w: task priority must be low, normal or high", ErrInvalidActivity)
 		}
-		query := `INSERT INTO tasks (workspace_id,id,owner_id,title,description,due_at,status,priority,company_id,contact_id,deal_id)
-			VALUES ($1,$2,$3,$4,COALESCE($5,''),$6,COALESCE($7,'open'),COALESCE($8,'normal'),$9,$10,$11)`
+		if err := validateReminderMinutes(input.ReminderMinutes); err != nil {
+			return Task{}, err
+		}
+		args := []any{scope.WorkspaceID, recordID, owner, title, description, input.DueAt, input.Status, input.Priority, links.CompanyID, links.ContactID, links.DealID, input.ReminderMinutes.Value}
+		query := `INSERT INTO tasks (workspace_id,id,owner_id,title,description,due_at,status,priority,company_id,contact_id,deal_id,reminder_minutes)
+			VALUES ($1,$2,$3,$4,COALESCE($5,''),$6,COALESCE($7,'open'),COALESCE($8,'normal'),$9,$10,$11,$12)`
 		if id != nil {
+			args = append(args, input.ReminderMinutes.Present)
 			query = `UPDATE tasks SET owner_id=$3,title=COALESCE($4,title),description=COALESCE($5,description),
 				due_at=COALESCE($6,due_at),status=COALESCE($7,status),priority=COALESCE($8,priority),
+				reminder_minutes=CASE WHEN $13 THEN $12::integer ELSE reminder_minutes END,
 				company_id=$9,contact_id=$10,deal_id=$11,updated_at=GREATEST(updated_at,statement_timestamp())
 				WHERE workspace_id=$1 AND id=$2`
 		}
-		_, err = tx.Exec(ctx, query, scope.WorkspaceID, recordID, owner, title, description, input.DueAt, input.Status, input.Priority, links.CompanyID, links.ContactID, links.DealID)
+		_, err = tx.Exec(ctx, query, args...)
 		if err != nil {
 			return Task{}, err
 		}
