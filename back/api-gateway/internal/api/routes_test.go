@@ -41,6 +41,8 @@ func TestGatewayIdentity(t *testing.T) {
 		{"remove member", "DELETE", "/auth/workspaces/w/members/u", "/workspaces/w/members/u", token, "account-id"},
 		{"crm contact search", "GET", "/crm/workspaces/w/contacts?q=smith", "/workspaces/w/contacts", token, "account-id"},
 		{"crm edit company", "PATCH", "/crm/workspaces/w/companies/c", "/workspaces/w/companies/c", token, "account-id"},
+		{"crm sales report", "GET", "/crm/workspaces/w/analytics?month=2026-11&currency=KZT&timezone=UTC", "/workspaces/w/analytics", token, "account-id"},
+		{"crm set sales target", "PUT", "/crm/workspaces/w/analytics/targets/u", "/workspaces/w/analytics/targets/u", token, "account-id"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,6 +87,7 @@ func TestWorkspaceRequiresBearer(t *testing.T) {
 		{"GET", "/auth/workspaces/w"}, {"GET", "/auth/workspaces/w/members"}, {"POST", "/auth/workspaces/w/members"},
 		{"PATCH", "/auth/workspaces/w/members/u"}, {"DELETE", "/auth/workspaces/w/members/u"},
 		{"GET", "/crm/workspaces/w/companies?token=" + queryToken}, {"POST", "/crm/workspaces/w/contacts"},
+		{"GET", "/crm/workspaces/w/analytics"}, {"PUT", "/crm/workspaces/w/analytics/targets/u"},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, nil)
 		req.Header.Set("X-User-Id", "untrusted")

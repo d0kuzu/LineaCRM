@@ -1,7 +1,11 @@
 import { useSyncExternalStore } from 'react';
+import type { Role } from './crm/session';
 
 export const sections = ['overview', 'customers', 'sales', 'tasks', 'calendar', 'inbox', 'analytics'] as const;
 export type Section = (typeof sections)[number];
+export function canViewSection(section: Section, role: Role) {
+  return section !== 'analytics' || role === 'sales_manager' || role === 'head_of_sales' || role === 'admin';
+}
 export type SalesLocation = { view: 'leads' | 'deals' | 'pipeline' | 'pipelines'; id?: string };
 export type Route =
   | { kind: 'section'; page: Section; record?: { kind: 'companies' | 'contacts'; id: string }; sales?: SalesLocation }

@@ -49,7 +49,7 @@ export function parameterChanges(draft: Draft, original?: DealParameters): Parti
   return changes;
 }
 
-export function amountLabel(deal: DealParameters, locale: string): string {
+export function amountLabel(deal: Pick<DealParameters, 'amount' | 'currency'>, locale: string): string {
   if (deal.amount == null || !deal.currency) return '—';
   const [whole, fraction = ''] = deal.amount.split('.');
   const formatter = new Intl.NumberFormat(locale, {

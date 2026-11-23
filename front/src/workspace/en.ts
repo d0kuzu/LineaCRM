@@ -25,15 +25,4 @@ export const workspaceEn = {
     note: 'On the Nov 4 call, you agreed to send the proposal by Friday.',
     subjects: ['Re: CRM proposal', 'Missed call', 'Calendar setup', 'Updated contract', 'Demo recording', 'Invitation response'],
   },
-  analytics: {
-    title: 'Sales analytics', description: 'Sales team / November target and forecast',
-    summary: 'Target and forecast', pipeline: 'Pipeline', team: 'Team', reps: 'Sales reps', rep: 'Sales rep',
-    actual: 'Actual', atRisk: 'At risk', metrics: ['Monthly target', 'Actual revenue', 'Revenue forecast', 'Gap to target'],
-    notes: ['Team target for November', '23% of monthly target', 'At the current sales pace', '15% of monthly target'],
-    byWeek: 'By week', revenue: 'Revenue trend', week: 'Week', riskTitle: 'What’s putting the target at risk?',
-    assistant: 'Assistant / Sales team', count: '3 deals need attention.',
-    cause: 'Slipping deadlines and missing next steps are lowering the forecast.',
-    sources: 'Sources', sourceNote: '3 deal records · 5 events', review: 'Review risks', singleDeal: '1 deal',
-    risks: ['No task to send the proposal.', 'The customer hasn’t replied in seven days.', 'Approval has been postponed twice.'],
-  },
 };

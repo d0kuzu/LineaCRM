@@ -2,7 +2,7 @@ import { useLocale } from '../i18n';
 import { useState } from 'react';
 import { roles, useCrm } from '../crm/session';
 import { TeamDialog } from '../crm/TeamDialog';
-import { sections, type Section } from '../routes';
+import { canViewSection, sections, type Section } from '../routes';
 
 export function Sidebar({ current }: { current?: Section }) {
   const { messages: { shell: copy } } = useLocale();
@@ -17,7 +17,7 @@ export function Sidebar({ current }: { current?: Section }) {
       </a>
       <nav className="primary-nav" aria-label={copy.workspace}>
         <p className="nav-caption">{copy.workspace}</p>
-        {sections.map(section => (
+        {sections.filter(section => canViewSection(section, workspace.role)).map(section => (
           <a key={section} href={`#/${section}`} className="nav-link"
             aria-label={copy.nav[section]} title={copy.nav[section]}
             aria-current={current === section ? 'page' : undefined}>
