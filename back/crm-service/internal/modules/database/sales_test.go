@@ -114,7 +114,7 @@ func TestConcurrentLeadConversionAndRollback(t *testing.T) {
 	if err != nil || untouched.DealID != nil || !untouched.UpdatedAt.Equal(lead.UpdatedAt) {
 		t.Fatal(untouched, err)
 	}
-	deals, err := db.ListDeals(ctx, leader, "", 20, 0)
+	deals, err := db.ListDeals(ctx, leader, DealListOptions{Limit: 20})
 	if err != nil || deals == nil || len(deals) != 0 {
 		t.Fatal(deals, err)
 	}
@@ -156,7 +156,7 @@ func TestConcurrentLeadConversionAndRollback(t *testing.T) {
 		t.Fatal(converted, err)
 	}
 	for _, term := range []string{"сделка", "құс", "_"} {
-		list, err := db.ListDeals(ctx, owner, term, 20, 0)
+		list, err := db.ListDeals(ctx, owner, DealListOptions{Query: term, Limit: 20})
 		if err != nil || len(list) != 1 || list[0].ID != original.ID {
 			t.Fatal(term, list, err)
 		}
@@ -206,7 +206,7 @@ func TestDealLinksCurrentAccessAndPreservation(t *testing.T) {
 	if err != nil || redacted.CompanyID != nil || !slices.Equal(redacted.ContactIDs, []string{a.ID}) {
 		t.Fatal(redacted, err)
 	}
-	list, err := db.ListDeals(ctx, owner, "", 10, 0)
+	list, err := db.ListDeals(ctx, owner, DealListOptions{Limit: 10})
 	if err != nil || len(list) != 1 || list[0].CompanyID != nil || !slices.Equal(list[0].ContactIDs, []string{a.ID}) {
 		t.Fatal(list, err)
 	}

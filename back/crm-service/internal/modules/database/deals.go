@@ -25,6 +25,17 @@ type Deal struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type DealSummary struct {
+	DealTerms
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	OwnerID    string    `json:"owner_id"`
+	PipelineID string    `json:"pipeline_id"`
+	StageID    string    `json:"stage_id"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type ConversionInput struct {
 	DealTermsPatch
 	StageID    *string  `json:"stage_id"`
@@ -46,12 +57,12 @@ var (
 	ErrDealLinkConflict = errors.New("cannot add and remove the same contact")
 )
 
+const dealSummaryFields = `d.id, d.owner_id, d.title, d.created_at, d.stage_id, stage.pipeline_id, stage.kind AS status,
+		d.amount::text AS amount, d.currency, to_char(d.expected_close_date, 'YYYY-MM-DD') AS expected_close_date, d.probability`
+
 // Stored links survive changes to customer ownership. Project only the
 // customer IDs the current reader can access, including on conversion retries.
-const readDeals = `
-	SELECT d.id, d.workspace_id, d.owner_id, d.lead_id, d.title, d.created_at, company.id AS company_id,
-		d.stage_id, stage.pipeline_id, stage.kind AS status,
-		d.amount::text AS amount, d.currency, to_char(d.expected_close_date, 'YYYY-MM-DD') AS expected_close_date, d.probability,
+const readDeals = `SELECT ` + dealSummaryFields + `, d.workspace_id, d.lead_id, company.id AS company_id,
 		ARRAY(SELECT c.id FROM deal_contacts link
 		      JOIN contacts c ON c.workspace_id = link.workspace_id AND c.id = link.contact_id
 		      WHERE link.workspace_id = d.workspace_id AND link.deal_id = d.id AND ($3 OR c.owner_id = $2)
@@ -59,18 +70,12 @@ const readDeals = `
 	FROM deals d JOIN pipeline_stages stage ON stage.workspace_id=d.workspace_id AND stage.id=d.stage_id
 	LEFT JOIN companies company
 	     ON company.workspace_id = d.workspace_id AND company.id = d.company_id AND ($3 OR company.owner_id = $2)
-	WHERE d.workspace_id = $1 AND ($3 OR d.owner_id = $2)`
+	WHERE ` + visibleDeal
 
 const dealByID = readDeals + " AND d.id = $4"
 
 func (s *Store) GetDeal(ctx context.Context, scope Scope, id string) (Deal, error) {
 	return one[Deal](s.pool.Query(ctx, dealByID, scope.WorkspaceID, scope.UserID, scope.All, id))
-}
-
-func (s *Store) ListDeals(ctx context.Context, scope Scope, query string, limit, offset int) ([]Deal, error) {
-	return many[Deal](s.pool.Query(ctx, readDeals+`
-		AND ($4 = '' OR crm_contains_ci(d.title, $4))
-		ORDER BY d.created_at DESC, d.id DESC LIMIT $5 OFFSET $6`, scope.WorkspaceID, scope.UserID, scope.All, query, limit, offset))
 }
 
 func checkDealCompany(ctx context.Context, tx pgx.Tx, scope Scope, companyID string) error {

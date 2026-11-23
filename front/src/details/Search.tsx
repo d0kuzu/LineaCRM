@@ -5,7 +5,7 @@ import { deals, meetings } from '../overview/data';
 import { calendarActivities } from '../workspace/Calendar';
 import { useCrm } from '../crm/session';
 import { errorText } from '../crm/http';
-import { usePipeline } from '../workspace/PipelinePreview';
+import { useDemoOpportunities } from './demoOpportunities';
 import { salesLink, type Deal, type Lead } from '../workspace/salesData';
 import { dateLabel, money, timeLabel } from '../workspace/format';
 import { Fields, PageTitle, RecordDialog } from '../workspace/shared';
@@ -33,7 +33,7 @@ export function Search() {
   const { messages: { details: copy, overview, workspace }, locale } = useLocale();
   const [query, setQuery] = useState('');
   const [selection, setSelection] = useState<Result | null>(null);
-  const pipeline = usePipeline();
+  const pipeline = useDemoOpportunities();
   const results: Result[] = [];
   const { workspace: team, request } = useCrm();
   const term = query.trim();

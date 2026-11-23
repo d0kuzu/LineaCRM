@@ -15,7 +15,7 @@ export function parameterDraft(deal?: DealParameters): Draft {
 }
 
 const amountPattern = '[0-9]{1,14}([.][0-9]{1,4})?';
-const validAmount = new RegExp('^' + amountPattern + '$');
+export const validAmount = new RegExp('^' + amountPattern + '$');
 
 // PostgreSQL returns four fraction digits. Compare decimal text exactly, so
 // editing "12.0000" to "12" does not overwrite a concurrent amount change.

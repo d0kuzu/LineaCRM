@@ -20,3 +20,16 @@
 .pipeline-editor-stages li { border-bottom:1px solid #dfe2de;padding:10px 0; }
 .pipeline-stage-fields { display:grid;grid-template-columns:minmax(0,2fr) minmax(85px,1fr);gap:10px; }
 .pipeline-stage-actions { display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px; }
+.deal-filters { flex:1 1 100%;min-width:0;margin:4px 0 0;padding:14px 0 0;border:0;border-top:1px solid #dfe2de;
+  grid-template-columns:repeat(auto-fit,minmax(135px,1fr));align-items:end; }
+.deal-filters > button { justify-self:start; }
+.ws-pipeline.deal-board { display:flex;align-items:flex-start;gap:12px;overflow-x:auto;padding-bottom:12px; }
+.ws-stage.deal-board-column { flex:1 0 clamp(220px,22vw,310px);min-width:0;min-height:170px; }
+.deal-board-column header { gap:8px;align-items:baseline; }
+.deal-board-column h2,.board-card { overflow-wrap:anywhere; }
+.deal-board-column > p { font-size:13px; }
+.board-card { min-height:96px; }
+.board-card[draggable="true"] { cursor:grab; }
+.board-deal-link { color:inherit;font-weight:600;text-decoration:none; }
+.board-deal-link:hover,.board-deal-link:focus-visible { text-decoration:underline; }
+.deal-drop-target { outline:2px dashed #77917e;outline-offset:-3px; }

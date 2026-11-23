@@ -83,7 +83,7 @@ func TestDealTermsConversionPatchAndJournal(t *testing.T) {
 		deal.ExpectedCloseDate == nil || *deal.ExpectedCloseDate != "2028-02-29" || deal.Probability == nil || *deal.Probability != 0 {
 		t.Fatal(deal, created, err)
 	}
-	list, err := db.ListDeals(ctx, seller, "", 10, 0)
+	list, err := db.ListDeals(ctx, seller, DealListOptions{Limit: 10})
 	if err != nil || len(list) != 1 || list[0].Amount == nil || *list[0].Amount != *deal.Amount {
 		t.Fatal(list, err)
 	}

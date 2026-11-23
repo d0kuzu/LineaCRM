@@ -18,7 +18,7 @@ function parseRoute(hash: string): Route {
   }
   if (page === 'sales' && (id === 'leads' || id === 'deals' || id === 'pipeline' || id === 'pipelines')) {
     if (!extra.length) return { kind: 'section', page, sales: { view: id } };
-    if ((id === 'leads' || id === 'deals') && hasRecordID) return { kind: 'section', page, sales: { view: id, id: extra[0] } };
+    if (id !== 'pipelines' && hasRecordID) return { kind: 'section', page, sales: { view: id, id: extra[0] } };
   }
   if (extra.length) return { kind: 'missing', page: 'missing' };
   if (!id) {

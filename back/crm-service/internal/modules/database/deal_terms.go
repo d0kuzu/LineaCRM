@@ -35,26 +35,39 @@ type DealTermsPatch struct {
 var ErrInvalidDealTerms = errors.New("invalid deal terms")
 var amountPattern = regexp.MustCompile(`^[0-9]{1,14}(\.[0-9]{1,4})?$`)
 
+func NormalizeDealAmount(raw string) (string, error) {
+	if !amountPattern.MatchString(raw) {
+		return "", fmt.Errorf("%w: amount must be a nonnegative decimal with at most 14 whole and 4 fractional digits", ErrInvalidDealTerms)
+	}
+	whole, fraction, _ := strings.Cut(raw, ".")
+	whole = strings.TrimLeft(whole, "0")
+	if whole == "" {
+		whole = "0"
+	}
+	return whole + "." + fraction + strings.Repeat("0", 4-len(fraction)), nil
+}
+
+func NormalizeDealCurrency(raw string) (string, error) {
+	unit, err := currency.ParseISO(raw)
+	if err != nil {
+		return "", fmt.Errorf("%w: currency must be an ISO 4217 code", ErrInvalidDealTerms)
+	}
+	return unit.String(), nil
+}
+
 func (p *DealTermsPatch) Validate() error {
 	if p.Amount.Present && p.Amount.Value != nil {
-		raw := *p.Amount.Value
-		if !amountPattern.MatchString(raw) {
-			return fmt.Errorf("%w: amount must be a nonnegative decimal with at most 14 whole and 4 fractional digits", ErrInvalidDealTerms)
+		normalized, err := NormalizeDealAmount(*p.Amount.Value)
+		if err != nil {
+			return err
 		}
-		whole, fraction, _ := strings.Cut(raw, ".")
-		whole = strings.TrimLeft(whole, "0")
-		if whole == "" {
-			whole = "0"
-		}
-		normalized := whole + "." + fraction + strings.Repeat("0", 4-len(fraction))
 		p.Amount.Value = &normalized
 	}
 	if p.Currency.Present && p.Currency.Value != nil {
-		unit, err := currency.ParseISO(*p.Currency.Value)
+		normalized, err := NormalizeDealCurrency(*p.Currency.Value)
 		if err != nil {
-			return fmt.Errorf("%w: currency must be an ISO 4217 code", ErrInvalidDealTerms)
+			return err
 		}
-		normalized := unit.String()
 		p.Currency.Value = &normalized
 	}
 	if p.ExpectedCloseDate.Present && p.ExpectedCloseDate.Value != nil {
