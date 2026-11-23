@@ -15,14 +15,18 @@ type Company struct {
 	Name        string    `json:"name"`
 	Email       string    `json:"email"`
 	Phone       string    `json:"phone"`
+	Tags        []string  `json:"tags"`
+	Segment     string    `json:"segment"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type CompanyInput struct {
-	Name  *string `json:"name"`
-	Email *string `json:"email"`
-	Phone *string `json:"phone"`
+	Name    *string   `json:"name"`
+	Email   *string   `json:"email"`
+	Phone   *string   `json:"phone"`
+	Tags    *[]string `json:"tags"`
+	Segment *string   `json:"segment"`
 }
 
 type Contact struct {
@@ -34,14 +38,18 @@ type Contact struct {
 	Phone       string    `json:"phone"`
 	Position    string    `json:"position"`
 	CompanyID   *string   `json:"company_id"`
+	Tags        []string  `json:"tags"`
+	Segment     string    `json:"segment"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type ContactInput struct {
-	Name      *string `json:"name"`
-	Email     *string `json:"email"`
-	Phone     *string `json:"phone"`
-	Position  *string `json:"position"`
-	CompanyID *string `json:"company_id"`
+	Name      *string   `json:"name"`
+	Email     *string   `json:"email"`
+	Phone     *string   `json:"phone"`
+	Position  *string   `json:"position"`
+	CompanyID *string   `json:"company_id"`
+	Tags      *[]string `json:"tags"`
+	Segment   *string   `json:"segment"`
 }

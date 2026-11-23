@@ -117,7 +117,7 @@ func TestListQueryBounds(t *testing.T) {
 	c, _ := gin.CreateTestContext(out)
 	c.Request = httptest.NewRequest("GET", "/?company_id="+testWorkspace, nil)
 	query, ok := listInput(c, true)
-	if !ok || query.limit != 50 || query.offset != 0 || query.companyID != testWorkspace {
+	if !ok || query.Limit != 50 || query.Offset != 0 || query.CompanyID != testWorkspace || query.Sort != "name" || query.Order != "asc" {
 		t.Fatalf("unexpected default query %+v", query)
 	}
 }
@@ -129,7 +129,7 @@ func TestCanonicalRecordIDs(t *testing.T) {
 	c.Params = gin.Params{{Key: "id", Value: upper}}
 	c.Request = httptest.NewRequest("GET", "/?company_id="+upper, nil)
 	list, ok := listInput(c, true)
-	if !ok || list.companyID != testWorkspace || recordID(c) != testWorkspace {
+	if !ok || list.CompanyID != testWorkspace || recordID(c) != testWorkspace {
 		t.Fatal("record id and company_id filter must normalize UUID case")
 	}
 	c.Request = httptest.NewRequest("PATCH", "/", strings.NewReader(`{"company_id":"`+upper+`"}`))

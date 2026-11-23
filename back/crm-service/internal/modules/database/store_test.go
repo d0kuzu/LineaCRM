@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func testStore(t *testing.T) *Store {
+func testDatabaseURL(t *testing.T) string {
 	t.Helper()
 	raw := os.Getenv("CRM_TEST_DATABASE_URL")
 	if raw == "" {
@@ -42,7 +42,12 @@ func testStore(t *testing.T) *Store {
 	query := dsn.Query()
 	query.Set("search_path", schema)
 	dsn.RawQuery = query.Encode()
-	store, err := Open(ctx, dsn.String())
+	return dsn.String()
+}
+
+func testStore(t *testing.T) *Store {
+	t.Helper()
+	store, err := Open(t.Context(), testDatabaseURL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,20 +91,20 @@ func TestCompaniesScopeSearchAndPaging(t *testing.T) {
 	}
 	createCompany(t, db, own, "No symbols")
 	for _, q := range []string{"mPLe", "_", "%", "sales@", "55-12", "проект", "құс"} {
-		listed, err := db.ListCompanies(ctx, own, q, 10, 0)
+		listed, err := db.ListCompanies(ctx, own, ListOptions{Query: q, Limit: 10})
 		if err != nil || len(listed) != 1 || listed[0].ID != first.ID {
 			t.Fatalf("search %q: %v, %v", q, listed, err)
 		}
 	}
-	page1, err := db.ListCompanies(ctx, manager, "sample", 1, 0)
+	page1, err := db.ListCompanies(ctx, manager, ListOptions{Query: "sample", Limit: 1})
 	if err != nil || len(page1) != 1 {
 		t.Fatalf("first page: %v, %v", page1, err)
 	}
-	page2, err := db.ListCompanies(ctx, manager, "sample", 1, 1)
+	page2, err := db.ListCompanies(ctx, manager, ListOptions{Query: "sample", Limit: 1, Offset: 1})
 	if err != nil || len(page2) != 1 || page1[0].ID >= page2[0].ID {
 		t.Fatalf("second page: %v, %v", page2, err)
 	}
-	empty, err := db.ListCompanies(ctx, manager, "sample", 1, 2)
+	empty, err := db.ListCompanies(ctx, manager, ListOptions{Query: "sample", Limit: 1, Offset: 2})
 	if err != nil || empty == nil || len(empty) != 0 {
 		t.Fatalf("empty page: %v, %v", empty, err)
 	}
@@ -168,16 +173,16 @@ func TestContactOwnershipAndLinks(t *testing.T) {
 		t.Fatalf("prior owner still reads reassigned contact: %v", err)
 	}
 	for _, q := range []string{"sales", "%", "_", "ALeX"} {
-		matches, err := db.ListContacts(ctx, manager, q, "", 20, 0)
+		matches, err := db.ListContacts(ctx, manager, ListOptions{Query: q, Limit: 20})
 		if err != nil || len(matches) != 1 || matches[0].ID != moved.ID {
 			t.Fatalf("search %q: %v, %v", q, matches, err)
 		}
 	}
-	matches, err := db.ListContacts(ctx, manager, "", ownCompany.ID, 20, 0)
+	matches, err := db.ListContacts(ctx, manager, ListOptions{CompanyID: ownCompany.ID, Limit: 20})
 	if err != nil || len(matches) != 1 || matches[0].ID != linked.ID {
 		t.Fatalf("company contacts: %v, %v", matches, err)
 	}
-	matches, err = db.ListContacts(ctx, peer, "", ownCompany.ID, 20, 0)
+	matches, err = db.ListContacts(ctx, peer, ListOptions{CompanyID: ownCompany.ID, Limit: 20})
 	if err != nil || matches == nil || len(matches) != 0 {
 		t.Fatalf("listed contacts of hidden company: %v, %v", matches, err)
 	}

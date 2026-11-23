@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/mail"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -17,15 +18,42 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type listQuery struct {
-	text, companyID string
-	limit, offset   int
-}
+const maxTagLength = 50
+const maxSegmentLength = 80
 
-func listInput(c *gin.Context, contacts bool) (listQuery, bool) {
-	query := listQuery{text: strings.TrimSpace(c.Query("q"))}
-	if !validText(query.text, 200) {
+func listInput(c *gin.Context, contacts bool) (database.ListOptions, bool) {
+	params := c.Request.URL.Query()
+	query := database.ListOptions{
+		Query:   strings.TrimSpace(params.Get("q")),
+		Tag:     strings.TrimSpace(params.Get("tag")),
+		Segment: strings.TrimSpace(params.Get("segment")),
+		OwnerID: params.Get("owner_id"),
+		Sort:    c.DefaultQuery("sort", "name"),
+		Order:   c.DefaultQuery("order", "asc"),
+	}
+	if !validText(query.Query, 200) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid search query"})
+		return query, false
+	}
+	for _, filter := range []struct {
+		name, value string
+		maxLength   int
+	}{
+		{"tag", query.Tag, maxTagLength},
+		{"segment", query.Segment, maxSegmentLength},
+		{"owner_id", query.OwnerID, 160},
+	} {
+		if params.Has(filter.name) && (strings.TrimSpace(filter.value) == "" || !validText(filter.value, filter.maxLength)) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid " + filter.name + " filter"})
+			return query, false
+		}
+	}
+	if query.Sort != "name" && query.Sort != "created_at" && query.Sort != "updated_at" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "sort must be name, created_at or updated_at"})
+		return query, false
+	}
+	if query.Order != "asc" && query.Order != "desc" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "order must be asc or desc"})
 		return query, false
 	}
 	limit, err := strconv.Atoi(c.DefaultQuery("limit", "50"))
@@ -43,9 +71,9 @@ func listInput(c *gin.Context, contacts bool) (listQuery, bool) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid company_id filter"})
 			return query, false
 		}
-		query.companyID = strings.ToLower(companyID)
+		query.CompanyID = strings.ToLower(companyID)
 	}
-	query.limit, query.offset = limit, int(offset)
+	query.Limit, query.Offset = limit, int(offset)
 	return query, true
 }
 
@@ -89,8 +117,17 @@ func decodeRecord(body []byte, contact bool, input *database.ContactInput) error
 			return invalid
 		}
 		name, ok := key.(string)
+		if !ok {
+			return invalid
+		}
+		if name == "tags" {
+			if err := decodeTags(decoder, input); err != nil {
+				return err
+			}
+			continue
+		}
 		var value *string
-		if !ok || decoder.Decode(&value) != nil {
+		if decoder.Decode(&value) != nil {
 			return invalid
 		}
 		if err := setField(input, contact, name, value); err != nil {
@@ -106,6 +143,31 @@ func decodeRecord(body []byte, contact bool, input *database.ContactInput) error
 	return nil
 }
 
+func decodeTags(decoder *json.Decoder, input *database.ContactInput) error {
+	if input.Tags != nil {
+		return errors.New("duplicate field tags")
+	}
+	var tags []string
+	if err := decoder.Decode(&tags); err != nil || tags == nil {
+		return errors.New("tags must be an array of strings")
+	}
+	if len(tags) > 20 {
+		return errors.New("at most 20 tags are allowed")
+	}
+	unique := make([]string, 0, len(tags))
+	for _, raw := range tags {
+		tag := strings.TrimSpace(raw)
+		if tag == "" || !validText(tag, maxTagLength) {
+			return errors.New("each tag must contain 1 to 50 characters")
+		}
+		if !slices.ContainsFunc(unique, func(existing string) bool { return strings.EqualFold(existing, tag) }) {
+			unique = append(unique, tag)
+		}
+	}
+	input.Tags = &unique
+	return nil
+}
+
 func setField(input *database.ContactInput, contact bool, name string, value *string) error {
 	var field **string
 	var maxLength int
@@ -116,6 +178,8 @@ func setField(input *database.ContactInput, contact bool, name string, value *st
 		field, maxLength = &input.Email, 254
 	case "phone":
 		field, maxLength = &input.Phone, 64
+	case "segment":
+		field, maxLength = &input.Segment, maxSegmentLength
 	case "position":
 		if contact {
 			field, maxLength = &input.Position, 200

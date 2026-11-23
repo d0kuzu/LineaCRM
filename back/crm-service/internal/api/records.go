@@ -13,7 +13,7 @@ func (h *handlers) listCompanies(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.db.ListCompanies(c.Request.Context(), scope(c), query.text, query.limit, query.offset)
+	result, err := h.db.ListCompanies(c.Request.Context(), scope(c), query)
 	recordResponse(c, http.StatusOK, result, err)
 }
 
@@ -27,7 +27,10 @@ func (h *handlers) writeCompany(c *gin.Context) {
 	if !ok {
 		return
 	}
-	input := database.CompanyInput{Name: fields.Name, Email: fields.Email, Phone: fields.Phone}
+	input := database.CompanyInput{
+		Name: fields.Name, Email: fields.Email, Phone: fields.Phone,
+		Tags: fields.Tags, Segment: fields.Segment,
+	}
 	if c.Request.Method == http.MethodPost {
 		result, err := h.db.CreateCompany(c.Request.Context(), scope(c), input)
 		recordResponse(c, http.StatusCreated, result, err)
@@ -42,7 +45,7 @@ func (h *handlers) listContacts(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.db.ListContacts(c.Request.Context(), scope(c), query.text, query.companyID, query.limit, query.offset)
+	result, err := h.db.ListContacts(c.Request.Context(), scope(c), query)
 	recordResponse(c, http.StatusOK, result, err)
 }
 
