@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useLocale } from '../i18n';
+import { useCrm } from '../crm/session';
 import { formatCount } from '../plurals';
 import { workspaceDate } from '../overview/data';
 import { dateLabel, timeLabel } from './format';
 import { PageTitle, Switcher } from './shared';
 
 const taskTimes = ['10:30', '11:00', '14:00', '16:30'];
-const storageKey = 'linea.tasks.2026-11-04.completed';
-function savedTasks(): string[] {
+function savedTasks(storageKey: string): string[] {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]');
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && taskTimes.includes(item)) : [];
@@ -16,7 +16,9 @@ function savedTasks(): string[] {
 
 export function Tasks() {
   const { messages: { workspace: { tasks: copy, general } }, locale } = useLocale();
-  const [closed, setClosed] = useState(savedTasks);
+  const { profile, workspace } = useCrm();
+  const storageKey = 'linea.tasks.2026-11-04.completed.' + profile.id + '.' + workspace.id;
+  const [closed, setClosed] = useState(() => savedTasks(storageKey));
   const [view, setView] = useState<'today' | 'completed'>('today');
   const rows = taskTimes.filter(time => closed.includes(time) === (view === 'completed'));
   function toggle(time: string) {

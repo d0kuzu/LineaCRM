@@ -27,10 +27,14 @@ func NewRouter(a *app.App) *gin.Engine {
 	records.POST("/companies", h.writeCompany)
 	records.GET("/companies/:id", h.getCompany)
 	records.PATCH("/companies/:id", h.writeCompany)
+	records.GET("/companies/:id/history", historyHandler(a.DB.CompanyHistory))
+	records.POST("/companies/:id/interactions", interactionHandler(a.DB.AddCompanyInteraction))
 	records.GET("/contacts", h.listContacts)
 	records.POST("/contacts", h.writeContact)
 	records.GET("/contacts/:id", h.getContact)
 	records.PATCH("/contacts/:id", h.writeContact)
+	records.GET("/contacts/:id/history", historyHandler(a.DB.ContactHistory))
+	records.POST("/contacts/:id/interactions", interactionHandler(a.DB.AddContactInteraction))
 	return router
 }
 

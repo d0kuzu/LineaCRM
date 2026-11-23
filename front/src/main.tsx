@@ -4,7 +4,8 @@ import '@fontsource-variable/inter/wght.css';
 import './styles.css';
 import { LocaleProvider } from './i18n';
 import { App } from './App';
+import { CrmSession } from './crm/session';
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode><LocaleProvider><App /></LocaleProvider></StrictMode>
+  <StrictMode><LocaleProvider><CrmSession><App /></CrmSession></LocaleProvider></StrictMode>
 );

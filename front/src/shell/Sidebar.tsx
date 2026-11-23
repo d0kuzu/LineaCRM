@@ -1,9 +1,14 @@
 import { useLocale } from '../i18n';
+import { useState } from 'react';
+import { roles, useCrm } from '../crm/session';
+import { TeamDialog } from '../crm/TeamDialog';
 import { sections, type Section } from '../routes';
 
 export function Sidebar({ current }: { current?: Section }) {
-  const { messages: { shell: copy, overview } } = useLocale();
-  const initials = overview.owner.split(/\s+/).map(part => part[0]).join('');
+  const { messages: { shell: copy } } = useLocale();
+  const { profile, workspace } = useCrm();
+  const [teamOpen, setTeamOpen] = useState(false);
+  const initials = profile.email.slice(0, 2).toUpperCase();
   return (
     <aside className="sidebar">
       <a href="#/overview" className="brand" aria-label={copy.product}>
@@ -29,10 +34,11 @@ export function Sidebar({ current }: { current?: Section }) {
           <span className="assistant-shortcut-description">{copy.assistantDescription}</span>
           <span className="assistant-shortcut-action">{copy.openChat}<img src="/icons/arrow-up-right.svg" alt="" /></span>
         </a>
-        <div className="rep-profile">
+        <button className="rep-profile profile-button" onClick={() => setTeamOpen(true)} aria-label="Account and workspace members" title="Account and workspace members">
           <span className="rep-avatar" aria-hidden="true">{initials}</span>
-          <span className="rep-details"><strong>{overview.owner}</strong><small>{copy.salesRep}</small></span>
-        </div>
+          <span className="rep-details"><strong>{profile.email}</strong><small>{roles[workspace.role]}</small></span>
+        </button>
+        {teamOpen && <TeamDialog onClose={() => setTeamOpen(false)}/>}
       </div>
     </aside>
   );

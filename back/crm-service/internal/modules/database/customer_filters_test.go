@@ -49,6 +49,22 @@ func TestExistingCustomersGainEmptyClassification(t *testing.T) {
 	if err != nil || contact.Tags == nil || len(contact.Tags) != 0 || contact.Segment != "" || contact.CompanyID == nil || *contact.CompanyID != company.ID {
 		t.Fatalf("migrated contact: %+v, %v", contact, err)
 	}
+	companyHistory, err := db.CompanyHistory(ctx, scope, company.ID, nil, 10)
+	if err != nil || companyHistory.Items == nil || len(companyHistory.Items) != 0 || companyHistory.NextCursor != nil {
+		t.Fatalf("existing company history: %+v, %v", companyHistory, err)
+	}
+	contactHistory, err := db.ContactHistory(ctx, scope, contact.ID, nil, 10)
+	if err != nil || contactHistory.Items == nil || len(contactHistory.Items) != 0 || contactHistory.NextCursor != nil {
+		t.Fatalf("existing contact history: %+v, %v", contactHistory, err)
+	}
+	if _, err := db.UpdateCompany(ctx, scope, company.ID, CompanyInput{Name: str("Renamed")}); err != nil {
+		t.Fatal(err)
+	}
+	companyHistory, err = db.CompanyHistory(ctx, scope, company.ID, nil, 10)
+	if err != nil || len(companyHistory.Items) != 1 || companyHistory.Items[0].Kind != "updated" ||
+		companyHistory.Items[0].Changes["name"] != (FieldChange{Before: "Company", After: "Renamed"}) {
+		t.Fatalf("first observed change: %+v, %v", companyHistory, err)
+	}
 }
 
 func TestClassificationFiltersAndPatch(t *testing.T) {

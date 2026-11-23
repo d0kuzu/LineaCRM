@@ -9,12 +9,8 @@ export const workspaceEn = {
     close: 'Close', date: 'Date', time: 'Time', companyDirectory: 'Company directory',
   },
   customers: {
-    title: 'Contacts', description: 'A shared customer directory for the sales team.',
-    contacts: 'Contacts', companies: 'Companies', segment: 'Segment', lastContact: 'Last contact',
-    contactDirectory: 'Contact directory', allSegments: 'All segments', allContacts: 'All contacts',
-    keyAccounts: 'Key accounts', noNextStep: 'No next step', duplicates: 'Possible duplicates',
-    summaryNotes: ['12 added this month', 'Managed by your team', 'Needs attention', 'Pairs to review'],
-    segments: { key: 'Key accounts', new: 'New customer', mid: 'Mid-market', partners: 'Partners' },
+    description: 'A shared customer directory for the sales team.',
+    contacts: 'Contacts', companies: 'Companies', contactDirectory: 'Contact directory',
   },
   sales: {
     title: 'Deal pipeline', description: 'Main pipeline · 12 open deals',

@@ -4,16 +4,20 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 const companyFields = "c.id, c.workspace_id, c.owner_id, c.name, c.email, c.phone, c.tags, c.segment, c.created_at, c.updated_at"
 
 func (s *Store) CreateCompany(ctx context.Context, scope Scope, input CompanyInput) (Company, error) {
-	return one[Company](s.pool.Query(ctx, `
+	id := uuid.NewString()
+	return saveWithHistory(ctx, s, scope, companyHistory, id, true, func(tx pgx.Tx) (Company, error) {
+		return one[Company](tx.Query(ctx, `
 		INSERT INTO companies AS c (workspace_id, owner_id, id, name, email, phone, tags, segment)
 		VALUES ($1, $2, $3, $4, COALESCE($5, ''), COALESCE($6, ''), COALESCE($7, '{}'::text[]), COALESCE($8, ''))
 		RETURNING `+companyFields,
-		scope.WorkspaceID, scope.UserID, uuid.NewString(), input.Name, input.Email, input.Phone, input.Tags, input.Segment))
+			scope.WorkspaceID, scope.UserID, id, input.Name, input.Email, input.Phone, input.Tags, input.Segment))
+	})
 }
 
 func (s *Store) GetCompany(ctx context.Context, scope Scope, id string) (Company, error) {
@@ -24,14 +28,16 @@ func (s *Store) GetCompany(ctx context.Context, scope Scope, id string) (Company
 }
 
 func (s *Store) UpdateCompany(ctx context.Context, scope Scope, id string, input CompanyInput) (Company, error) {
-	return one[Company](s.pool.Query(ctx, `
+	return saveWithHistory(ctx, s, scope, companyHistory, id, false, func(tx pgx.Tx) (Company, error) {
+		return one[Company](tx.Query(ctx, `
 		UPDATE companies AS c
 		SET name = COALESCE($5, c.name), email = COALESCE($6, c.email), phone = COALESCE($7, c.phone),
 		    tags = COALESCE($8, c.tags), segment = COALESCE($9, c.segment),
 		    updated_at = GREATEST(c.updated_at, statement_timestamp())
 		WHERE c.workspace_id = $1 AND ($3 OR c.owner_id = $2) AND c.id = $4
 		RETURNING `+companyFields,
-		scope.WorkspaceID, scope.UserID, scope.All, id, input.Name, input.Email, input.Phone, input.Tags, input.Segment))
+			scope.WorkspaceID, scope.UserID, scope.All, id, input.Name, input.Email, input.Phone, input.Tags, input.Segment))
+	})
 }
 
 func (s *Store) ListCompanies(ctx context.Context, scope Scope, options ListOptions) ([]Company, error) {

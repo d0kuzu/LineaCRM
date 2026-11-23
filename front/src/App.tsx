@@ -4,6 +4,7 @@ import { useRoute } from './routes';
 import { Sidebar } from './shell/Sidebar';
 import { Toolbar } from './shell/Toolbar';
 import { Overview } from './overview/Overview';
+import { Customers } from './workspace/Customers';
 import { WorkspaceSection } from './workspace';
 import { DetailPage } from './details/DetailPage';
 
@@ -49,7 +50,9 @@ export function App() {
       <div className="workspace-body">
         <Toolbar current={current} />
         <main className="workspace-main" ref={main} tabIndex={-1}>
-          {route.kind === 'section' && (route.page === 'overview'
+          {route.kind === 'section' && (route.page === 'customers'
+            ? <div className="workspace-section"><Customers initialRecord={route.record}/></div>
+            : route.page === 'overview'
             ? <Overview /> : <WorkspaceSection key={route.page} section={route.page} />)}
           {route.kind === 'detail' && <DetailPage key={path} page={route.page} id={route.id} />}
           {route.kind === 'missing' && <><h1>{shell.pages.missing}</h1><a href="#/overview">{shell.returnHome}</a></>}

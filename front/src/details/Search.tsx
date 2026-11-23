@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocale } from '../i18n';
 import { formatCount } from '../plurals';
 import { deals, meetings } from '../overview/data';
 import { calendarActivities } from '../workspace/Calendar';
-import { contacts } from '../workspace/Customers';
+import { useCrm } from '../crm/session';
+import { errorText } from '../crm/http';
 import { usePipeline } from '../workspace/Sales';
 import { dateLabel, money, timeLabel } from '../workspace/format';
 import { Fields, PageTitle, RecordDialog } from '../workspace/shared';
@@ -15,6 +16,7 @@ import searchIcon from './assets/search.svg';
 import { fill } from './format';
 
 const icons = { company: companyIcon, contact: contactIcon, deal: dealIcon, meeting: meetingIcon };
+type SearchCard = { id: string; name: string; segment: string; email: string; position?: string };
 type Result = {
   type: keyof typeof icons;
   title: string;
@@ -31,28 +33,37 @@ export function Search() {
   const [selection, setSelection] = useState<Result | null>(null);
   const pipeline = usePipeline();
   const results: Result[] = [];
-  const companies = new Set([...contacts.map(c => c.company), ...pipeline.map(d => d.company)]);
-  for (const company of companies) {
-    const contact = contacts.find(c => c.company === company);
-    const fields: [string, string][] = [[copy.search.company, company]];
-    if (contact) fields.push([copy.search.contact, contact.name]);
-    results.push({
-      type: 'company', company, fields, suggested: company === overview.accounts.orbita.company,
-      title: fill(copy.search.companyTitle, { company }),
-      subtitle: company === overview.accounts.orbita.company ? copy.contacts.midMarket : company,
-    });
-  }
-  for (const contact of contacts) {
-    const fields: [string, string][] = [
-      [copy.search.company, contact.company],
-      [workspace.customers.segment, workspace.customers.segments[contact.segment]],
-      [workspace.general.owner, contact.owner],
-    ];
-    results.push({
-      type: 'contact', title: contact.name, company: contact.company, fields, suggested: contact.name === copy.contacts.aliya,
-      subtitle: contact.name === copy.contacts.aliya ? [copy.contacts.aliyaRole, contact.company].join(' · ') : contact.company,
-    });
-  }
+  const { workspace: team, request } = useCrm();
+  const term = query.trim();
+  const [live, setLive] = useState<{ term: string; results: Result[]; error?: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const abort = new AbortController();
+    setLive(null);
+    async function findRecords() {
+      const params = new URLSearchParams({ q: term, limit: term ? '25' : '4' });
+      const path = '/crm/workspaces/' + team.id + '/';
+      try {
+        const [companies, people] = await Promise.all(
+          ['companies', 'contacts'].map(kind => request<SearchCard[]>(path + kind + '?' + params, { signal: abort.signal })));
+        const hits: Result[] = [
+          ...companies.map(record => ({
+            type: 'company' as const, title: record.name, company: record.name,
+            subtitle: record.segment || record.email, href: '#/customers/companies/' + record.id,
+          })),
+          ...people.map(record => ({
+            type: 'contact' as const, title: record.name, company: '', subtitle: record.position || record.email,
+            href: '#/customers/contacts/' + record.id,
+          })),
+        ];
+        if (!abort.signal.aborted) setLive({ term, results: hits });
+      } catch (err) {
+        if (!abort.signal.aborted) setLive({ term, results: [], error: errorText(err) });
+      }
+    }
+    const timer = window.setTimeout(() => void findRecords(), 180);
+    return () => { clearTimeout(timer); abort.abort(); };
+  }, [term, team.id, request, attempt]);
   for (const deal of pipeline) {
     const stage = workspace.sales.stages[deal.stage];
     const amount = money(deal.amount, locale);
@@ -82,10 +93,12 @@ export function Search() {
   }
   const normalize = (text: string) => text.toLocaleLowerCase(locale).normalize('NFKD').replace(/\p{M}/gu, '');
   const words = normalize(query.trim()).split(/\s+/);
-  const filtered = query.trim() ? results.filter(result => {
+  const demoResults = query.trim() ? results.filter(result => {
     const haystack = normalize([result.title, result.company, result.subtitle, copy.search[result.type]].join(' '));
     return words.every(word => haystack.includes(word));
   }) : results.filter(result => result.suggested);
+  const found = live?.term === term ? live : null;
+  const filtered = [...(found?.results ?? []), ...demoResults];
   const relatedDeal = selection?.type !== 'deal' && deals.find(d => overview.accounts[d.id].company === selection?.company);
 
   return <>
@@ -97,15 +110,16 @@ export function Search() {
     </label>
     <section className="detail-card detail-results">
       <h2>{query.trim() ? copy.search.results : copy.search.suggested}</h2>
-      <p className="detail-muted" role="status">{formatCount(copy.search.resultCount, filtered.length, locale)}</p>
+      {found?.error ? <p role="alert">{found.error} <button onClick={() => setAttempt(n => n + 1)}>Try again</button></p>
+        : <p className="detail-muted" role="status">{found ? formatCount(copy.search.resultCount, filtered.length, locale) : 'Searching…'}</p>}
       <ul className="detail-results-list">{filtered.map(result => {
         const content = <><img src={icons[result.type]} alt="" /><span><strong>{result.title}</strong>
-          <small>{[copy.search[result.type], result.subtitle].join(' · ')}</small></span></>;
-        return <li key={[result.type, result.company, result.title].join('/')}>{result.href
+          <small>{[copy.search[result.type], result.subtitle, ['deal','meeting'].includes(result.type) ? 'Demo' : ''].filter(Boolean).join(' · ')}</small></span></>;
+        return <li key={result.href ?? [result.type, result.company, result.title].join('/')}>{result.href
           ? <a href={result.href}>{content}</a>
           : <button type="button" onClick={() => setSelection(result)}>{content}</button>}</li>;
       })}</ul>
-      {!filtered.length && <p>{copy.search.empty}</p>}
+      {found && !found.error && !filtered.length && <p>{copy.search.empty}</p>}
     </section>
     {selection && <RecordDialog title={selection.title} onClose={() => setSelection(null)}>
       <Fields rows={selection.fields ?? []} />

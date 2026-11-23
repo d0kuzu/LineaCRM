@@ -4,12 +4,15 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 const contactFields = "c.id, c.workspace_id, c.owner_id, c.name, c.email, c.phone, c.position, c.company_id, c.tags, c.segment, c.created_at, c.updated_at"
 
 func (s *Store) CreateContact(ctx context.Context, scope Scope, input ContactInput) (Contact, error) {
-	return one[Contact](s.pool.Query(ctx, `
+	id := uuid.NewString()
+	return saveWithHistory(ctx, s, scope, contactHistory, id, true, func(tx pgx.Tx) (Contact, error) {
+		return one[Contact](tx.Query(ctx, `
 		INSERT INTO contacts AS c (workspace_id, owner_id, id, name, email, phone, position, company_id, tags, segment)
 		SELECT $1, COALESCE(company.owner_id, $2), $4, $5, COALESCE($6, ''), COALESCE($7, ''), COALESCE($8, ''),
 		       company.id, COALESCE($10, '{}'::text[]), COALESCE($11, '')
@@ -18,7 +21,8 @@ func (s *Store) CreateContact(ctx context.Context, scope Scope, input ContactInp
 		      AND ($3 OR company.owner_id = $2)
 		WHERE requested.company_id IS NULL OR company.id IS NOT NULL
 		RETURNING `+contactFields,
-		scope.WorkspaceID, scope.UserID, scope.All, uuid.NewString(), input.Name, input.Email, input.Phone, input.Position, input.CompanyID, input.Tags, input.Segment))
+			scope.WorkspaceID, scope.UserID, scope.All, id, input.Name, input.Email, input.Phone, input.Position, input.CompanyID, input.Tags, input.Segment))
+	})
 }
 
 func (s *Store) GetContact(ctx context.Context, scope Scope, id string) (Contact, error) {
@@ -31,7 +35,8 @@ func (s *Store) GetContact(ctx context.Context, scope Scope, id string) (Contact
 func (s *Store) UpdateContact(ctx context.Context, scope Scope, id string, input ContactInput) (Contact, error) {
 	// A missing company field preserves the link. An empty value detaches the
 	// contact. An explicit ID must resolve to a company visible to the caller.
-	return one[Contact](s.pool.Query(ctx, `
+	return saveWithHistory(ctx, s, scope, contactHistory, id, false, func(tx pgx.Tx) (Contact, error) {
+		return one[Contact](tx.Query(ctx, `
 		UPDATE contacts AS c
 		SET name = COALESCE($5, c.name), email = COALESCE($6, c.email), phone = COALESCE($7, c.phone),
 		    position = COALESCE($8, c.position), owner_id = COALESCE(company.owner_id, c.owner_id),
@@ -44,7 +49,8 @@ func (s *Store) UpdateContact(ctx context.Context, scope Scope, id string, input
 		WHERE c.workspace_id = $1 AND ($3 OR c.owner_id = $2) AND c.id = $4
 		  AND (NULLIF(requested.company_id, '') IS NULL OR company.id IS NOT NULL)
 		RETURNING `+contactFields,
-		scope.WorkspaceID, scope.UserID, scope.All, id, input.Name, input.Email, input.Phone, input.Position, input.CompanyID, input.Tags, input.Segment))
+			scope.WorkspaceID, scope.UserID, scope.All, id, input.Name, input.Email, input.Phone, input.Position, input.CompanyID, input.Tags, input.Segment))
+	})
 }
 
 func (s *Store) ListContacts(ctx context.Context, scope Scope, options ListOptions) ([]Contact, error) {

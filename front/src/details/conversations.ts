@@ -5,9 +5,8 @@ type Exchange = { question: string; answer: Answer };
 export type Conversation = { id: number; topic?: Topic; exchanges: Exchange[] };
 export type ChatSession = { current: number; threads: Conversation[] };
 
-const storageKey = 'linea.assistant.session.v1';
 const answers: ReadonlySet<string> = new Set([...topicIds, 'mayak', 'help']);
-let memory: ChatSession | undefined;
+const memory = new Map<string, ChatSession>();
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -26,8 +25,9 @@ function isSession(value: unknown): value is ChatSession {
   return ids.size === value.threads.length && typeof value.current === 'number' && ids.has(value.current);
 }
 
-export function loadChatSession(): ChatSession {
-  if (memory) return memory;
+export function loadChatSession(storageKey: string): ChatSession {
+  const cached = memory.get(storageKey);
+  if (cached) return cached;
   try {
     const value: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null');
     if (isSession(value)) return value;
@@ -35,8 +35,8 @@ export function loadChatSession(): ChatSession {
   return { current: 0, threads: topicIds.map((topic, id) => ({ topic, id, exchanges: [] })) };
 }
 
-export function saveChatSession(session: ChatSession) {
-  memory = session;
+export function saveChatSession(storageKey: string, session: ChatSession) {
+  memory.set(storageKey, session);
   try {
     sessionStorage.setItem(storageKey, JSON.stringify(session));
   } catch { /* Keep the session available across routes if storage is blocked or full. */ }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useLocale } from '../i18n';
+import { useCrm } from '../crm/session';
 import { deals } from '../overview/data';
 import { money } from '../workspace/format';
 import { PageTitle } from '../workspace/shared';
@@ -31,9 +32,11 @@ function Reply({ answer }: { answer: Answer }) {
 
 export function Assistant() {
   const { messages: { details: { assistant: copy }, overview }, locale } = useLocale();
-  const [session, setSession] = useState(loadChatSession);
+  const { profile, workspace } = useCrm();
+  const storageKey = 'linea.assistant.session.v1.' + profile.id + '.' + workspace.id;
+  const [session, setSession] = useState(() => loadChatSession(storageKey));
   const { current, threads } = session;
-  useEffect(() => { saveChatSession(session); }, [session]);
+  useEffect(() => { saveChatSession(storageKey, session); }, [storageKey, session]);
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const thread = threads.find(item => item.id === current)!;
