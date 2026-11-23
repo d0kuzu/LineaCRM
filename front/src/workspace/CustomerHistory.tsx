@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useCrm } from '../crm/session';
 import { useLocale } from '../i18n';
-import { accessError, errorMessage, timestamp } from './customerData';
+import { accessError, errorMessage, timestamp, type FieldDefinition } from './customerData';
 
 const eventNames: Record<string,string> = {
   created: 'Record created', updated: 'Record updated', note: 'Note', email: 'Email', call: 'Call', meeting: 'Meeting',
@@ -12,16 +12,17 @@ const fieldNames: Record<string,string> = {
 };
 interface Entry {
   id: string; kind: string; actor_id: string; created_at: string; body?: string;
-  changes?: Record<string, { before: unknown; after: unknown }> | null;
+  changes?: Record<string, { before: unknown; after: unknown; label?: string }> | null;
 }
 interface HistoryPage { items: Entry[]; next_cursor: string | null }
 function filled(value: unknown) {
   return value != null && value !== '' && (!Array.isArray(value) || value.length > 0);
 }
 
-export function CustomerHistory({ recordPath, canWrite, participant, linkedCompany, onAccessError }: {
+export function CustomerHistory({ recordPath, canWrite, participant, linkedCompany, fieldDefinitions, onAccessError }: {
   recordPath: string; canWrite: boolean; participant: (id: string) => string; onAccessError: (error: unknown) => void;
   linkedCompany?: { id: string; name: string };
+  fieldDefinitions: FieldDefinition[];
 }) {
   const { request } = useCrm();
   const { locale } = useLocale();
@@ -36,6 +37,10 @@ export function CustomerHistory({ recordPath, canWrite, participant, linkedCompa
   const bodyLength = Array.from(body.trim()).length;
   const read = useRef<AbortController | null>(null);
   const write = useRef<AbortController | null>(null);
+  function labelFor(field: string, recordedLabel?: string) {
+    if (!field.startsWith('custom:')) return fieldNames[field] ?? field;
+    return recordedLabel || fieldDefinitions.find(def => def.id === field.slice(7))?.label || 'Custom field';
+  }
   function displayValue(field: string, value: unknown): string {
     if (!filled(value)) return 'Empty';
     if (field === 'owner_id' && typeof value === 'string') return participant(value);
@@ -110,7 +115,7 @@ export function CustomerHistory({ recordPath, canWrite, participant, linkedCompa
       {Object.entries(entry.changes ?? {})
         .filter(([, change]) => entry.kind !== 'created' || filled(change.after))
         .map(([field, change]) => <p key={field} className="customer-change">
-          <b>{fieldNames[field] ?? field}</b> {entry.kind !== 'created' && <>{displayValue(field, change.before)} → </>}{displayValue(field, change.after)}</p>)}
+          <b>{labelFor(field, change.label)}</b> {entry.kind !== 'created' && <>{displayValue(field, change.before)} → </>}{displayValue(field, change.after)}</p>)}
     </li>)}</ol>}
     {items?.length === 0 && <p className="ws-subtext">No history yet.</p>}
     {loading && <p role="status" className="ws-subtext">Loading history…</p>}

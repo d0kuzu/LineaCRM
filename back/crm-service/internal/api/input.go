@@ -81,16 +81,24 @@ func validText(text string, maxLength int) bool {
 	return utf8.ValidString(text) && !strings.ContainsRune(text, '\x00') && utf8.RuneCountInString(text) <= maxLength
 }
 
-func recordInput(c *gin.Context, contact bool) (database.ContactInput, bool) {
-	var input database.ContactInput
-	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10))
+func readBody(c *gin.Context, maxBytes int64) ([]byte, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes))
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "record body exceeds 16 KiB"})
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		}
+		return nil, false
+	}
+	return body, true
+}
+
+func recordInput(c *gin.Context, contact bool) (database.ContactInput, bool) {
+	var input database.ContactInput
+	body, ok := readBody(c, 1<<20)
+	if !ok {
 		return input, false
 	}
 	if err := decodeRecord(body, contact, &input); err != nil {
@@ -105,7 +113,23 @@ func recordInput(c *gin.Context, contact bool) (database.ContactInput, bool) {
 }
 
 func decodeRecord(body []byte, contact bool, input *database.ContactInput) error {
-	invalid := errors.New("expected a JSON object with record fields")
+	return decodeFieldsObject(body, func(name string, decoder *json.Decoder) error {
+		switch name {
+		case "tags":
+			return decodeTags(decoder, input)
+		case "custom_fields":
+			return decodeCustomFields(decoder, input)
+		}
+		var value *string
+		if err := decoder.Decode(&value); err != nil {
+			return errors.New("invalid record field value")
+		}
+		return setField(input, contact, name, value)
+	})
+}
+
+func decodeFieldsObject(body []byte, readField func(string, *json.Decoder) error) error {
+	invalid := errors.New("expected a nonempty JSON object")
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	first, err := decoder.Token()
 	if err != nil || first != json.Delim('{') || !utf8.Valid(body) || !decoder.More() {
@@ -120,17 +144,7 @@ func decodeRecord(body []byte, contact bool, input *database.ContactInput) error
 		if !ok {
 			return invalid
 		}
-		if name == "tags" {
-			if err := decodeTags(decoder, input); err != nil {
-				return err
-			}
-			continue
-		}
-		var value *string
-		if decoder.Decode(&value) != nil {
-			return invalid
-		}
-		if err := setField(input, contact, name, value); err != nil {
+		if err := readField(name, decoder); err != nil {
 			return err
 		}
 	}

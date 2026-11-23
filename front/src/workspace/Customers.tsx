@@ -4,6 +4,7 @@ import { useLocale } from '../i18n';
 import { CompanyPicker } from './CompanyPicker';
 import { CustomerCard } from './CustomerCard';
 import { CustomerForm } from './CustomerForm';
+import { CustomerFieldSettings } from './CustomerFieldSettings';
 import { accessError, customerLink, errorMessage, singular, useCustomerData, type Customer, type CustomerKind, type CustomerRef, type Member } from './customerData';
 import { PageTitle, RecordDialog, Switcher } from './shared';
 import './customers.css';
@@ -24,6 +25,7 @@ export function Customers({ initialRecord }: { initialRecord?: CustomerRef }) {
   const [page, setPage] = useState(0);
   const [revision, setRevision] = useState(0);
   const [create, setCreate] = useState<Creation | null>(null);
+  const [settings, setSettings] = useState(false);
   const [notice, setNotice] = useState('');
   const refresh = useCallback(() => setRevision(n => n + 1), []);
   const source = initialRecord ? customerLink(initialRecord) : '#/customers';
@@ -61,7 +63,8 @@ export function Customers({ initialRecord }: { initialRecord?: CustomerRef }) {
       <button className="ws-text-button" onClick={() => { setCreate(null); if (initialRecord) closeCard(); refresh(); }}>Retry directory</button></p></>;
   return <>
     <div className="customer-page-head"><PageTitle title={label} description={copy.description}/>
-      {canWrite && <button className="ws-action" onClick={() => begin(kind)}>New {singular[kind]}</button>}</div>
+      {canWrite && <div className="customer-actions">{workspace.role === 'admin' && <button className="ws-pill" onClick={() => setSettings(true)}>Manage fields</button>}
+        <button className="ws-action" onClick={() => begin(kind)}>New {singular[kind]}</button></div>}</div>
     <div className="ws-toolbar customer-toolbar"><Switcher<CustomerKind> values={[[ 'contacts', copy.contacts ], [ 'companies', copy.companies ]]}
       selected={kind} onSelect={switchKind} label="Customer directory"/>
       <input className="ws-search" type="search" aria-label={'Search ' + kind} placeholder={'Search ' + kind} maxLength={200}
@@ -106,7 +109,9 @@ export function Customers({ initialRecord }: { initialRecord?: CustomerRef }) {
         <span>Page {(page + 1).toLocaleString(locale)}</span>
         <button className="ws-pill" disabled={items.length <= pageSize} onClick={() => setPage(n => n+1)}>Next</button></nav>}
     </section>
-    {creation && canWrite ? <RecordDialog title={'New ' + singular[creation.kind]} onClose={() => setCreate(null)}>
+    {settings && !initialRecord && workspace.role === 'admin' ? <CustomerFieldSettings kind={kind} onClose={() => setSettings(false)}
+      onAccessError={error => { setSettings(false); setNotice(errorMessage(error)); refresh(); }}/>
+      : creation && canWrite ? <RecordDialog title={'New ' + singular[creation.kind]} onClose={() => setCreate(null)}>
       <div className="customer-card"><CustomerForm kind={creation.kind} companyID={creation.company?.id} companyName={creation.company?.name}
         onCancel={() => setCreate(null)} onAccessError={error => { setCreate(null); setNotice(errorMessage(error)); refresh(); }}
         onSaved={result => { setCreate(null); refresh(); window.location.hash = customerLink({kind:creation.kind,id:result.id}); }}/></div></RecordDialog>

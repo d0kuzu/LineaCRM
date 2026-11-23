@@ -23,6 +23,10 @@ func NewRouter(a *app.App) *gin.Engine {
 	}), gin.Recovery())
 	records := router.Group("/workspaces/:workspace_id", authorize(a.Access))
 	h := handlers{db: a.DB}
+	fields := records.Group("/fields/:kind", fieldKind)
+	fields.GET("", h.listFields)
+	fields.POST("", requireFieldAdmin, h.writeField)
+	fields.PATCH("/:field_id", requireFieldAdmin, h.writeField)
 	records.GET("/companies", h.listCompanies)
 	records.POST("/companies", h.writeCompany)
 	records.GET("/companies/:id", h.getCompany)
@@ -68,6 +72,7 @@ func authorize(access accessChecker) gin.HandlerFunc {
 		switch role {
 		case "admin", "head_of_sales":
 			scope.All = true
+			scope.Admin = role == "admin"
 		case "sales_manager":
 			scope.All = false
 		case "support":
@@ -111,6 +116,12 @@ func recordResponse(c *gin.Context, status int, data any, err error) {
 		c.JSON(status, data)
 	case errors.Is(err, database.ErrNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "record not found"})
+	case errors.Is(err, database.ErrInvalidField):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, database.ErrFieldConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "a field with that label already exists"})
+	case errors.Is(err, database.ErrFieldForbidden):
+		c.JSON(http.StatusForbidden, gin.H{"error": "only workspace administrators can configure fields"})
 	default:
 		_ = c.Error(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "record operation failed"})

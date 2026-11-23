@@ -10,8 +10,9 @@ import (
 )
 
 type FieldChange struct {
-	Before any `json:"before"`
-	After  any `json:"after"`
+	Before any    `json:"before"`
+	After  any    `json:"after"`
+	Label  string `json:"label,omitempty"`
 }
 
 type HistoryEvent struct {
@@ -37,7 +38,11 @@ var companyHistory = historySource{"companies", "company_id", companyFields}
 var contactHistory = historySource{"contacts", "contact_id", contactFields}
 
 func (c Company) historyFields() map[string]any {
-	return map[string]any{"name": c.Name, "email": c.Email, "phone": c.Phone, "owner_id": c.OwnerID, "segment": c.Segment, "tags": c.Tags}
+	fields := map[string]any{"name": c.Name, "email": c.Email, "phone": c.Phone, "owner_id": c.OwnerID, "segment": c.Segment, "tags": c.Tags}
+	for id, value := range c.CustomFields {
+		fields["custom:"+id] = value
+	}
+	return fields
 }
 
 func (c Contact) historyFields() map[string]any {
@@ -46,11 +51,14 @@ func (c Contact) historyFields() map[string]any {
 	if c.CompanyID != nil {
 		fields["company_id"] = *c.CompanyID
 	}
+	for id, value := range c.CustomFields {
+		fields["custom:"+id] = value
+	}
 	return fields
 }
 
 func saveWithHistory[T interface{ historyFields() map[string]any }](ctx context.Context, s *Store, scope Scope, source historySource,
-	id string, create bool, save func(pgx.Tx) (T, error)) (T, error) {
+	id string, create bool, customPatch map[string]*string, save func(pgx.Tx, map[string]*string) (T, error)) (T, error) {
 	var zero, previous T
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -71,14 +79,40 @@ func saveWithHistory[T interface{ historyFields() map[string]any }](ctx context.
 		before = previous.historyFields()
 		kind = "updated"
 	}
-	record, err := save(tx)
+	if err := lockFieldSettings(ctx, tx, scope.WorkspaceID, source.table, false); err != nil {
+		return zero, err
+	}
+	definitions, err := readFields(ctx, tx, scope.WorkspaceID, source.table)
+	if err != nil {
+		return zero, err
+	}
+	labels := make(map[string]string)
+	for _, field := range definitions {
+		if !field.Builtin {
+			labels["custom:"+field.ID] = field.Label
+		}
+	}
+	customValues, err := cleanCustomValues(customPatch, labels)
+	if err != nil {
+		return zero, err
+	}
+	record, err := save(tx, customValues)
 	if err != nil {
 		return zero, err
 	}
 	changes := make(map[string]FieldChange)
-	for key, value := range record.historyFields() {
+	after := record.historyFields()
+	if err := checkRequiredFields(definitions, after); err != nil {
+		return zero, err
+	}
+	for key, value := range after {
 		if !reflect.DeepEqual(before[key], value) {
-			changes[key] = FieldChange{Before: before[key], After: value}
+			changes[key] = FieldChange{Before: before[key], After: value, Label: labels[key]}
+		}
+	}
+	for key, value := range before {
+		if _, present := after[key]; !present {
+			changes[key] = FieldChange{Before: value, Label: labels[key]}
 		}
 	}
 	if len(changes) == 0 {

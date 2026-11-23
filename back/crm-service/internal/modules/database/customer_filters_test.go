@@ -42,11 +42,12 @@ func TestExistingCustomersGainEmptyClassification(t *testing.T) {
 	defer db.Close()
 	scope := Scope{WorkspaceID: "w", UserID: "u"}
 	company, err := db.GetCompany(ctx, scope, "co")
-	if err != nil || company.Tags == nil || len(company.Tags) != 0 || company.Segment != "" {
+	if err != nil || company.Tags == nil || len(company.Tags) != 0 || company.Segment != "" || company.CustomFields == nil || len(company.CustomFields) != 0 {
 		t.Fatalf("migrated company: %+v, %v", company, err)
 	}
 	contact, err := db.GetContact(ctx, scope, "ct")
-	if err != nil || contact.Tags == nil || len(contact.Tags) != 0 || contact.Segment != "" || contact.CompanyID == nil || *contact.CompanyID != company.ID {
+	if err != nil || contact.Tags == nil || len(contact.Tags) != 0 || contact.Segment != "" || contact.CompanyID == nil || *contact.CompanyID != company.ID ||
+		contact.CustomFields == nil || len(contact.CustomFields) != 0 {
 		t.Fatalf("migrated contact: %+v, %v", contact, err)
 	}
 	companyHistory, err := db.CompanyHistory(ctx, scope, company.ID, nil, 10)

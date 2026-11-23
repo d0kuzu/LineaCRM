@@ -6,9 +6,11 @@ export type CustomerRef = { kind: CustomerKind; id: string };
 export interface Customer {
   id: string; workspace_id: string; owner_id: string; name: string; email: string; phone: string;
   tags: string[]; segment: string; position?: string; company_id?: string | null;
+  custom_fields?: Record<string, string>;
   created_at: string; updated_at: string;
 }
 export interface Member { user_id: string; email: string; role: string }
+export interface FieldDefinition { id: string; label: string; required: boolean; builtin: boolean }
 export const singular = { companies: 'company', contacts: 'contact' } as const;
 export const customerLink = ({ kind, id }: CustomerRef) => '#/customers/' + kind + '/' + encodeURIComponent(id);
 export function accessError(error: unknown) {
@@ -44,4 +46,9 @@ export function useCustomerData<T>(path: string | null, revision = 0, delay = 0)
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [path, revision, request, delay]);
   return result && result.path === path && result.revision === revision ? result : null;
+}
+
+export function useCustomerFields(kind: CustomerKind, revision: number) {
+  const { workspace } = useCrm();
+  return useCustomerData<FieldDefinition[]>('/crm/workspaces/' + workspace.id + '/fields/' + kind, revision);
 }

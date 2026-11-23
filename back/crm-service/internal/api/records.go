@@ -29,7 +29,7 @@ func (h *handlers) writeCompany(c *gin.Context) {
 	}
 	input := database.CompanyInput{
 		Name: fields.Name, Email: fields.Email, Phone: fields.Phone,
-		Tags: fields.Tags, Segment: fields.Segment,
+		Tags: fields.Tags, Segment: fields.Segment, CustomFields: fields.CustomFields,
 	}
 	if c.Request.Method == http.MethodPost {
 		result, err := h.db.CreateCompany(c.Request.Context(), scope(c), input)

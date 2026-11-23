@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useCrm } from '../crm/session';
 import { accessError, errorMessage, useCustomerData, type Customer } from './customerData';
 
-export function CompanyPicker({ value, onChange, currentName, label = 'Company', onAccessError }: {
-  value: string; onChange: (id: string) => void; currentName?: string; label?: string; onAccessError?: (error: unknown) => void;
+export function CompanyPicker({ value, onChange, currentName, label = 'Company', required, onAccessError }: {
+  value: string; onChange: (id: string) => void; currentName?: string; label?: string; required?: boolean; onAccessError?: (error: unknown) => void;
 }) {
   const { workspace } = useCrm();
   const [query, setQuery] = useState('');
@@ -18,10 +18,10 @@ export function CompanyPicker({ value, onChange, currentName, label = 'Company',
   if (accessError(companies?.error)) return <p role="alert" className="customer-error">Company directory unavailable.</p>;
   const rows = companies?.data?.slice(0, 20) ?? [];
   const selectedName = choice?.id === value ? choice.name : currentName;
-  return <fieldset className="customer-company-picker"><legend>{label}</legend>
+  return <fieldset className="customer-company-picker"><legend>{label}{required && <span aria-hidden="true"> *</span>}</legend>
     <input aria-label="Search companies to link" type="search" value={query} placeholder="Find a company"
       onChange={event => { setQuery(event.target.value); setOffset(0); }} />
-    <select aria-label={label} value={value} onChange={event => {
+    <select aria-label={label} required={required} value={value} onChange={event => {
       const id = event.target.value;
       setChoice(rows.find(row => row.id === id) ?? null);
       onChange(id);
