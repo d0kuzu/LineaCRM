@@ -1,31 +1,124 @@
-.analytics-report { display:grid;gap:16px;min-width:0; }
-.analytics-report .customer-page-head,.analytics-report .ws-toolbar,.analytics-report .ws-stats { margin:0; }
-.analytics-controls { align-items:flex-end;gap:16px; }
-.analytics-controls label,.analytics-select { display:grid;gap:4px;font-size:13px;font-weight:500; }
-.analytics-controls input,.analytics-select select { background:white;border:1px solid var(--ws-line);border-radius:9px;min-width:0;padding:7px 10px; }
-.analytics-controls input[aria-label="Report currency"] { max-width:9em; }
-.analytics-report .analytics-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); }
-.analytics-kpis .ws-stat { min-width:0; }
-.analytics-kpis .ws-stat strong { font-size:clamp(19px,2.1vw,30px);overflow-wrap:anywhere; }
-.analytics-panel .ws-section-head { align-items:flex-start; }
-.analytics-panel .ws-section-head > div:first-child { flex:1; }
-.analytics-panel .ws-subtext { margin-block:5px 10px; }
-.analytics-panel .ws-table-scroll { margin-top:12px; }
-.analytics-panel table { width:100%; }
-.analytics-panel tbody th { color:var(--ws-dark);font-size:13px;font-weight:600;text-transform:none;overflow-wrap:anywhere; }
-.analytics-panel tbody tr:nth-child(odd) th { background:var(--ws-soft);border-radius:9px 0 0 9px; }
-.analytics-panel tbody th small { display:block;color:var(--ws-muted);font-size:12px;font-weight:400; }
-.analytics-panel tfoot :is(td,th) { border-top:1px solid var(--ws-line);font-weight:600;color:var(--ws-dark); }
-.analytics-edit { display:block;margin-top:4px; }
-.analytics-employees { min-width:650px; }
-.analytics-funnel { min-width:510px; }
-.analytics-count { display:flex;align-items:center;gap:7px; }
-.analytics-count b { min-width:1.5em; }
-.analytics-count span { display:block;width:clamp(45px,7vw,95px);height:5px;border-radius:5px;background:#dce1da; }
-.analytics-count i { display:block;height:100%;border-radius:inherit;background:#617a68; }
-@media(max-width:700px) {
-  .analytics-report .analytics-kpis { grid-template-columns:1fr; }
-  .analytics-kpis .ws-stat { min-height:0; }
-  .analytics-panel { padding:16px; }
-  .analytics-select select { max-width:100%; }
+.analytics-report {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.analytics-report .customer-page-head,
+.analytics-report .ws-toolbar,
+.analytics-report .ws-stats {
+  margin: 0;
+}
+.analytics-controls {
+  align-items: flex-end;
+  gap: 16px;
+}
+.analytics-controls label,
+.analytics-select {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.analytics-controls input,
+.analytics-select select {
+  background: white;
+  border: 1px solid var(--ws-line);
+  border-radius: 9px;
+  min-width: 0;
+  padding: 7px 10px;
+}
+.analytics-controls input[aria-label='Report currency'] {
+  max-width: 9em;
+}
+.analytics-report .analytics-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.analytics-kpis .ws-stat {
+  min-width: 0;
+}
+.analytics-kpis .ws-stat strong {
+  font-size: clamp(19px, 2.1vw, 30px);
+  overflow-wrap: anywhere;
+}
+.analytics-panel .ws-section-head {
+  align-items: flex-start;
+}
+.analytics-panel .ws-section-head > div:first-child {
+  flex: 1;
+}
+.analytics-panel .ws-subtext {
+  margin-block: 5px 10px;
+}
+.analytics-panel .ws-table-scroll {
+  margin-top: 12px;
+}
+.analytics-panel table {
+  width: 100%;
+}
+.analytics-panel tbody th {
+  color: var(--ws-dark);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+.analytics-panel tbody tr:nth-child(odd) th {
+  background: var(--ws-soft);
+  border-radius: 9px 0 0 9px;
+}
+.analytics-panel tbody th small {
+  display: block;
+  color: var(--ws-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.analytics-panel tfoot :is(td, th) {
+  border-top: 1px solid var(--ws-line);
+  font-weight: 600;
+  color: var(--ws-dark);
+}
+.analytics-edit {
+  display: block;
+  margin-top: 4px;
+}
+.analytics-employees {
+  min-width: 650px;
+}
+.analytics-funnel {
+  min-width: 510px;
+}
+.analytics-count {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.analytics-count b {
+  min-width: 1.5em;
+}
+.analytics-count span {
+  display: block;
+  width: clamp(45px, 7vw, 95px);
+  height: 5px;
+  border-radius: 5px;
+  background: #dce1da;
+}
+.analytics-count i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #617a68;
+}
+@media (max-width: 700px) {
+  .analytics-report .analytics-kpis {
+    grid-template-columns: 1fr;
+  }
+  .analytics-kpis .ws-stat {
+    min-height: 0;
+  }
+  .analytics-panel {
+    padding: 16px;
+  }
+  .analytics-select select {
+    max-width: 100%;
+  }
 }

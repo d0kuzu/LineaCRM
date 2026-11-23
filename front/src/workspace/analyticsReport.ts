@@ -45,6 +45,10 @@ const empty: SalesResults = {
   interactions: 0,
 };
 
+export function canHaveTarget(member: Member) {
+  return ['admin', 'head_of_sales', 'sales_manager'].includes(member.role);
+}
+
 export function employeeRows(
   report: SalesReport,
   members: Member[] | undefined,
@@ -58,10 +62,8 @@ export function employeeRows(
       .filter((item) => !managerID || item.owner_id === managerID)
       .map((item) => [item.owner_id, item]),
   );
-  const eligible = (member?: Member) =>
-    member && ['admin', 'head_of_sales', 'sales_manager'].includes(member.role);
   for (const member of members ?? []) {
-    if (eligible(member) && !results.has(member.user_id))
+    if (canHaveTarget(member) && !results.has(member.user_id))
       results.set(member.user_id, { ...empty, owner_id: member.user_id });
   }
   if (managerID && !results.has(managerID)) results.set(managerID, { ...empty, owner_id: managerID });
@@ -71,7 +73,7 @@ export function employeeRows(
       return {
         ...row,
         label: member?.email || (own.id === row.owner_id && own.email) || row.owner_id,
-        eligible: !!eligible(member),
+        eligible: !!member && canHaveTarget(member),
         former: !!members && !member,
       };
     })

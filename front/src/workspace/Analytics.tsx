@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCrm } from '../crm/session';
 import { useLocale } from '../i18n';
 import { useActivityRevision } from './activities';
-import { employeeRows, type EmployeeRow, type SalesReport } from './analyticsReport';
+import { canHaveTarget, employeeRows, type EmployeeRow, type SalesReport } from './analyticsReport';
 import { AnalyticsTarget } from './AnalyticsTarget';
 import { amountLabel } from './DealParameters';
 import { canChangeOwner } from './SalesOwner';
@@ -168,7 +168,7 @@ function Employees({
           <h2 id="employee-results">{team ? 'Salespeople' : 'My results'}</h2>
           <p className="ws-subtext">
             {sales
-              ? 'Results use the current owner and amount of deals still won after their latest win in this month.'
+              ? 'Sales include deals currently won whose latest win falls in this month, using their current owner and amount.'
               : 'Completed tasks belong to the assignee, finished meetings to the organizer, and manual interactions to the author.'}
           </p>
         </div>
@@ -259,13 +259,13 @@ function Employees({
 export function Analytics() {
   const { workspace, profile } = useCrm();
   const { locale } = useLocale();
-  const [month, setMonth] = useState(initialMonth),
-    [currency, setCurrency] = useState('KZT');
-  const [pipeline, setPipeline] = useState(''),
-    [view, setView] = useState<'sales' | 'activity'>('sales');
+  const [month, setMonth] = useState(initialMonth);
+  const [currency, setCurrency] = useState('KZT');
+  const [pipeline, setPipeline] = useState('');
+  const [view, setView] = useState<'sales' | 'activity'>('sales');
   const [revision, refresh] = useActivityRevision();
-  const [editor, setEditor] = useState<Editor | null>(null),
-    [notice, setNotice] = useState<Notice | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const team = canChangeOwner(workspace.role);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const validMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) && month >= '0001-01';
@@ -288,11 +288,7 @@ export function Analytics() {
   const money: Money = (amount) => amountLabel({ amount, currency }, locale);
   const activeEditor = editor?.scope === scope ? editor : null;
   const eligible =
-    activeEditor &&
-    roster?.data?.some(
-      (member) =>
-        member.user_id === activeEditor.id && (canChangeOwner(member.role) || member.role === 'sales_manager'),
-    );
+    activeEditor && roster?.data?.some((member) => member.user_id === activeEditor.id && canHaveTarget(member));
   useEffect(() => {
     if (activeEditor && (denied || (roster?.data && !eligible))) {
       setEditor(null);
@@ -364,7 +360,7 @@ export function Analytics() {
             Retry report
           </button>
         </p>
-      ) : !report ? (
+      ) : !report || (team && !roster) ? (
         <p className="ws-panel ws-empty" role="status">
           Loading sales report…
         </p>
