@@ -51,14 +51,14 @@ func (h *handlers) writeField(c *gin.Context) {
 
 func fieldInput(body []byte) (database.FieldInput, error) {
 	var input database.FieldInput
-	err := decodeFieldsObject(body, func(name string, decoder *json.Decoder) error {
+	err := decodeFieldsObject(body, false, func(name string, decoder *json.Decoder) error {
 		switch name {
 		case "label":
-			if input.Label != nil || decoder.Decode(&input.Label) != nil || input.Label == nil {
+			if decoder.Decode(&input.Label) != nil || input.Label == nil {
 				return errors.New("expected one string for label")
 			}
 		case "required":
-			if input.Required != nil || decoder.Decode(&input.Required) != nil || input.Required == nil {
+			if decoder.Decode(&input.Required) != nil || input.Required == nil {
 				return errors.New("expected one boolean for required")
 			}
 		default:
@@ -70,9 +70,6 @@ func fieldInput(body []byte) (database.FieldInput, error) {
 }
 
 func decodeCustomFields(decoder *json.Decoder, input *database.ContactInput) error {
-	if input.CustomFields != nil {
-		return errors.New("duplicate custom_fields")
-	}
 	first, err := decoder.Token()
 	if err != nil || first != json.Delim('{') {
 		return errors.New("custom_fields must be an object")

@@ -21,20 +21,37 @@ import (
 const maxTagLength = 50
 const maxSegmentLength = 80
 
-func listInput(c *gin.Context, contacts bool) (database.ListOptions, bool) {
-	params := c.Request.URL.Query()
-	query := database.ListOptions{
-		Query:   strings.TrimSpace(params.Get("q")),
-		Tag:     strings.TrimSpace(params.Get("tag")),
-		Segment: strings.TrimSpace(params.Get("segment")),
-		OwnerID: params.Get("owner_id"),
-		Sort:    c.DefaultQuery("sort", "name"),
-		Order:   c.DefaultQuery("order", "asc"),
-	}
+func searchInput(c *gin.Context) (database.ListOptions, bool) {
+	query := database.ListOptions{Query: strings.TrimSpace(c.Query("q"))}
 	if !validText(query.Query, 200) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid search query"})
 		return query, false
 	}
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	if err != nil || limit < 1 || limit > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "limit must be between 1 and 100"})
+		return query, false
+	}
+	offset, err := strconv.ParseInt(c.DefaultQuery("offset", "0"), 10, 32)
+	if err != nil || offset < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "offset must be between 0 and 2147483647"})
+		return query, false
+	}
+	query.Limit, query.Offset = limit, int(offset)
+	return query, true
+}
+
+func listInput(c *gin.Context, contacts bool) (database.ListOptions, bool) {
+	query, ok := searchInput(c)
+	if !ok {
+		return query, false
+	}
+	params := c.Request.URL.Query()
+	query.Tag = strings.TrimSpace(params.Get("tag"))
+	query.Segment = strings.TrimSpace(params.Get("segment"))
+	query.OwnerID = params.Get("owner_id")
+	query.Sort = c.DefaultQuery("sort", "name")
+	query.Order = c.DefaultQuery("order", "asc")
 	for _, filter := range []struct {
 		name, value string
 		maxLength   int
@@ -56,16 +73,6 @@ func listInput(c *gin.Context, contacts bool) (database.ListOptions, bool) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "order must be asc or desc"})
 		return query, false
 	}
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	if err != nil || limit < 1 || limit > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "limit must be between 1 and 100"})
-		return query, false
-	}
-	offset, err := strconv.ParseInt(c.DefaultQuery("offset", "0"), 10, 32)
-	if err != nil || offset < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "offset must be between 0 and 2147483647"})
-		return query, false
-	}
 	if companyID, supplied := c.GetQuery("company_id"); supplied {
 		if !contacts || !validID(companyID) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid company_id filter"})
@@ -73,7 +80,6 @@ func listInput(c *gin.Context, contacts bool) (database.ListOptions, bool) {
 		}
 		query.CompanyID = strings.ToLower(companyID)
 	}
-	query.Limit, query.Offset = limit, int(offset)
 	return query, true
 }
 
@@ -113,7 +119,7 @@ func recordInput(c *gin.Context, contact bool) (database.ContactInput, bool) {
 }
 
 func decodeRecord(body []byte, contact bool, input *database.ContactInput) error {
-	return decodeFieldsObject(body, func(name string, decoder *json.Decoder) error {
+	return decodeFieldsObject(body, false, func(name string, decoder *json.Decoder) error {
 		switch name {
 		case "tags":
 			return decodeTags(decoder, input)
@@ -128,13 +134,14 @@ func decodeRecord(body []byte, contact bool, input *database.ContactInput) error
 	})
 }
 
-func decodeFieldsObject(body []byte, readField func(string, *json.Decoder) error) error {
-	invalid := errors.New("expected a nonempty JSON object")
+func decodeFieldsObject(body []byte, allowEmpty bool, readField func(string, *json.Decoder) error) error {
+	invalid := errors.New("invalid JSON object")
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	first, err := decoder.Token()
-	if err != nil || first != json.Delim('{') || !utf8.Valid(body) || !decoder.More() {
+	if err != nil || first != json.Delim('{') || !utf8.Valid(body) || (!allowEmpty && !decoder.More()) {
 		return invalid
 	}
+	seen := make(map[string]bool)
 	for decoder.More() {
 		key, err := decoder.Token()
 		if err != nil {
@@ -144,6 +151,10 @@ func decodeFieldsObject(body []byte, readField func(string, *json.Decoder) error
 		if !ok {
 			return invalid
 		}
+		if seen[name] {
+			return fmt.Errorf("duplicate field %s", name)
+		}
+		seen[name] = true
 		if err := readField(name, decoder); err != nil {
 			return err
 		}
@@ -158,9 +169,6 @@ func decodeFieldsObject(body []byte, readField func(string, *json.Decoder) error
 }
 
 func decodeTags(decoder *json.Decoder, input *database.ContactInput) error {
-	if input.Tags != nil {
-		return errors.New("duplicate field tags")
-	}
 	var tags []string
 	if err := decoder.Decode(&tags); err != nil || tags == nil {
 		return errors.New("tags must be an array of strings")
@@ -212,9 +220,6 @@ func setField(input *database.ContactInput, contact bool, name string, value *st
 	}
 	if field == nil {
 		return errors.New("unknown record field")
-	}
-	if *field != nil {
-		return fmt.Errorf("duplicate field %s", name)
 	}
 	if value == nil {
 		return fmt.Errorf("%s must be a string", name)

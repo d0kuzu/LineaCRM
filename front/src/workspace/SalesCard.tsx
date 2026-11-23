@@ -1,0 +1,318 @@
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCrm } from '../crm/session';
+import { useLocale } from '../i18n';
+import {
+  accessError,
+  customerLink,
+  errorMessage,
+  timestamp,
+  useCustomerData,
+  type Customer,
+} from './customerData';
+import { DealLinkFields, LeadForm, type LinkedContact } from './LeadForm';
+import { salesLink, type Deal, type Lead, type SalesKind } from './salesData';
+import { Fields, RecordDialog } from './shared';
+
+function RelatedRecord({
+  kind,
+  id,
+  onDenied,
+}: {
+  kind: 'leads' | 'companies' | 'contacts';
+  id: string;
+  onDenied: (error: unknown) => void;
+}) {
+  const { workspace } = useCrm();
+  const [revision, setRevision] = useState(0);
+  const result = useCustomerData<{ name?: string; title?: string }>(
+    '/crm/workspaces/' + workspace.id + '/' + kind + '/' + id,
+    revision,
+  );
+  useEffect(() => {
+    if (accessError(result?.error)) onDenied(result?.error);
+  }, [result?.error, onDenied]);
+  if (!result) return <span role="status">Loading…</span>;
+  if (!result.data)
+    return (
+      <span role="alert">
+        Record unavailable.{' '}
+        <button className="ws-text-button" onClick={() => setRevision((n) => n + 1)}>
+          Retry
+        </button>
+      </span>
+    );
+  return (
+    <a className="ws-text-button" href={kind === 'leads' ? salesLink(kind, id) : customerLink({ kind, id })}>
+      {result.data.name ?? result.data.title}
+    </a>
+  );
+}
+
+function DealRelations({ deal, onDenied }: { deal: Deal; onDenied: (error: unknown) => void }) {
+  const [page, setPage] = useState(0);
+  const ids = deal.contact_ids ?? [];
+  return (
+    <section className="sales-relations">
+      <h3>Source lead</h3>
+      <RelatedRecord kind="leads" id={deal.lead_id} onDenied={onDenied} />
+      <h3>Company</h3>
+      {deal.company_id ? (
+        <RelatedRecord kind="companies" id={deal.company_id} onDenied={onDenied} />
+      ) : (
+        <p className="ws-subtext">No visible company link.</p>
+      )}
+      <h3>Contacts</h3>
+      {ids.length ? (
+        <ul className="customer-linked">
+          {ids.slice(page * 10, page * 10 + 10).map((id) => (
+            <li key={id}>
+              <RelatedRecord kind="contacts" id={id} onDenied={onDenied} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="ws-subtext">No visible contact links.</p>
+      )}
+      {ids.length > 10 && (
+        <div className="customer-pager">
+          <button disabled={!page} onClick={() => setPage((n) => n - 1)}>
+            Previous contacts
+          </button>
+          <button disabled={(page + 1) * 10 >= ids.length} onClick={() => setPage((n) => n + 1)}>
+            More contacts
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EditDealLinks({
+  deal,
+  onSaved,
+  onCancel,
+  onDenied,
+}: {
+  deal: Deal;
+  onSaved: () => void;
+  onCancel: () => void;
+  onDenied: (error: unknown) => void;
+}) {
+  const { request, workspace } = useCrm();
+  const [company, setCompany] = useState(deal.company_id ?? '');
+  const [contacts, setContacts] = useState<LinkedContact[]>(() =>
+    (deal.contact_ids ?? []).map((id) => ({ id })),
+  );
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const active = useRef<AbortController | null>(null);
+  const base = '/crm/workspaces/' + workspace.id;
+  const originalCompany = useCustomerData<Customer>(
+    deal.company_id ? base + '/companies/' + deal.company_id : null,
+  );
+  useEffect(() => {
+    if (accessError(originalCompany?.error)) onDenied(originalCompany?.error);
+  }, [originalCompany?.error, onDenied]);
+  useEffect(() => () => active.current?.abort(), []);
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (active.current) return;
+    const before = new Set(deal.contact_ids);
+    const after = new Set(contacts.map((contact) => contact.id));
+    const add = [...after].filter((id) => !before.has(id)),
+      remove = [...before].filter((id) => !after.has(id));
+    const changes: { company_id?: string | null; add_contact_ids?: string[]; remove_contact_ids?: string[] } =
+      {};
+    if (company !== (deal.company_id ?? '')) changes.company_id = company || null;
+    if (add.length) changes.add_contact_ids = add;
+    if (remove.length) changes.remove_contact_ids = remove;
+    if (!Object.keys(changes).length) {
+      onCancel();
+      return;
+    }
+    const controller = new AbortController();
+    active.current = controller;
+    setBusy(true);
+    setError('');
+    try {
+      await request<Deal>(base + '/deals/' + deal.id, {
+        method: 'PATCH',
+        body: JSON.stringify(changes),
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) onSaved();
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        if (accessError(cause)) onDenied(cause);
+        else setError(errorMessage(cause));
+      }
+    } finally {
+      active.current = null;
+      if (!controller.signal.aborted) setBusy(false);
+    }
+  }
+  return (
+    <form onSubmit={save} className="customer-form sales-form">
+      <fieldset className="customer-field-grid" disabled={busy}>
+        <DealLinkFields
+          company={company}
+          companyName={originalCompany?.data?.name}
+          setCompany={setCompany}
+          contacts={contacts}
+          setContacts={setContacts}
+          onDenied={onDenied}
+        />
+      </fieldset>
+      {error && (
+        <p role="alert" className="customer-error">
+          {error}
+        </p>
+      )}
+      <div className="customer-actions">
+        <button className="ws-action" disabled={busy}>
+          {busy ? 'Saving…' : 'Save links'}
+        </button>
+        <button className="ws-pill" type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export function SalesCard({
+  kind,
+  id,
+  ownerLabel,
+  onClose,
+  onChanged,
+}: {
+  kind: SalesKind;
+  id: string;
+  ownerLabel: (owner: string) => string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const { workspace } = useCrm();
+  const { locale } = useLocale();
+  const [mode, setMode] = useState<'view' | 'edit' | 'convert'>('view');
+  const [revision, setRevision] = useState(0);
+  const [denied, setDenied] = useState(false);
+  const base = '/crm/workspaces/' + workspace.id;
+  const result = useCustomerData<Lead | Deal>(denied ? null : base + '/' + kind + '/' + id, revision);
+  const onDenied = useCallback(() => {
+    setMode('view');
+    setDenied(true);
+    onChanged();
+  }, [onChanged]);
+  useEffect(() => {
+    if (accessError(result?.error)) onDenied();
+  }, [result?.error, onDenied]);
+  function reload() {
+    setMode('view');
+    setDenied(false);
+    setRevision((n) => n + 1);
+    onChanged();
+  }
+  const row = result?.data,
+    lead = row && 'deal_id' in row ? row : null,
+    deal = row && 'lead_id' in row ? row : null;
+  const canWrite = workspace.role !== 'support';
+  const title =
+    denied || !row
+      ? kind === 'leads'
+        ? 'Lead'
+        : 'Deal'
+      : mode === 'convert'
+        ? 'Convert lead'
+        : mode === 'edit'
+          ? lead
+            ? 'Edit lead'
+            : 'Edit deal links'
+          : row.title;
+  return (
+    <RecordDialog title={title} onClose={onClose}>
+      <div className="customer-card">
+        {denied || result?.error != null ? (
+          <p role="alert" className="customer-error">
+            {denied || accessError(result?.error)
+              ? 'This record or one of its links is no longer available.'
+              : errorMessage(result?.error)}{' '}
+            <button className="ws-text-button" onClick={reload}>
+              Reload record
+            </button>
+          </p>
+        ) : !row ? (
+          <p role="status">Loading record…</p>
+        ) : canWrite && mode !== 'view' && lead && !lead.deal_id ? (
+          <LeadForm
+            lead={lead}
+            convert={mode === 'convert'}
+            onCancel={() => setMode('view')}
+            onDenied={onDenied}
+            onReload={reload}
+            onSaved={(nextKind, nextID) => {
+              reload();
+              window.location.hash = salesLink(nextKind, nextID);
+            }}
+          />
+        ) : canWrite && mode === 'edit' && deal ? (
+          <EditDealLinks deal={deal} onSaved={reload} onCancel={() => setMode('view')} onDenied={onDenied} />
+        ) : (
+          <>
+            <Fields
+              rows={[
+                ['Owner', ownerLabel(row.owner_id)],
+                ['Created', timestamp(row.created_at, locale)],
+                ...(lead
+                  ? ([
+                      ['Status', lead.deal_id ? 'Converted' : 'Open'],
+                      ['Updated', timestamp(lead.updated_at, locale)],
+                    ] as [string, string][])
+                  : []),
+              ]}
+            />
+            {lead && (
+              <>
+                {lead.description && (
+                  <section>
+                    <h3>Description</h3>
+                    <p className="sales-description">{lead.description}</p>
+                  </section>
+                )}
+                <div className="customer-actions">
+                  {lead.deal_id ? (
+                    <a className="ws-action" href={salesLink('deals', lead.deal_id)}>
+                      Open deal
+                    </a>
+                  ) : (
+                    canWrite && (
+                      <>
+                        <button className="ws-action" onClick={() => setMode('convert')}>
+                          Convert to deal
+                        </button>
+                        <button className="ws-pill" onClick={() => setMode('edit')}>
+                          Edit lead
+                        </button>
+                      </>
+                    )
+                  )}
+                </div>
+              </>
+            )}
+            {deal && (
+              <>
+                {canWrite && (
+                  <button className="ws-pill" onClick={() => setMode('edit')}>
+                    Edit links
+                  </button>
+                )}
+                <DealRelations deal={deal} onDenied={onDenied} />
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </RecordDialog>
+  );
+}

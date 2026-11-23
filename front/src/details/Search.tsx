@@ -5,7 +5,8 @@ import { deals, meetings } from '../overview/data';
 import { calendarActivities } from '../workspace/Calendar';
 import { useCrm } from '../crm/session';
 import { errorText } from '../crm/http';
-import { usePipeline } from '../workspace/Sales';
+import { usePipeline } from '../workspace/PipelinePreview';
+import { salesLink, type Deal, type Lead } from '../workspace/salesData';
 import { dateLabel, money, timeLabel } from '../workspace/format';
 import { Fields, PageTitle, RecordDialog } from '../workspace/shared';
 import companyIcon from './assets/company.svg';
@@ -15,7 +16,7 @@ import meetingIcon from './assets/meeting.svg';
 import searchIcon from './assets/search.svg';
 import { fill } from './format';
 
-const icons = { company: companyIcon, contact: contactIcon, deal: dealIcon, meeting: meetingIcon };
+const icons = { company: companyIcon, contact: contactIcon, lead: dealIcon, deal: dealIcon, meeting: meetingIcon };
 type SearchCard = { id: string; name: string; segment: string; email: string; position?: string };
 type Result = {
   type: keyof typeof icons;
@@ -25,6 +26,7 @@ type Result = {
   href?: string;
   fields?: [string, string][];
   suggested?: boolean;
+  demo?: boolean;
 };
 
 export function Search() {
@@ -44,8 +46,13 @@ export function Search() {
       const params = new URLSearchParams({ q: term, limit: term ? '25' : '4' });
       const path = '/crm/workspaces/' + team.id + '/';
       try {
-        const [companies, people] = await Promise.all(
-          ['companies', 'contacts'].map(kind => request<SearchCard[]>(path + kind + '?' + params, { signal: abort.signal })));
+        const options = { signal: abort.signal };
+        const [companies, people, leads, liveDeals] = await Promise.all([
+          request<SearchCard[]>(path + 'companies?' + params, options),
+          request<SearchCard[]>(path + 'contacts?' + params, options),
+          request<Lead[]>(path + 'leads?' + params, options),
+          request<Deal[]>(path + 'deals?' + params, options),
+        ]);
         const hits: Result[] = [
           ...companies.map(record => ({
             type: 'company' as const, title: record.name, company: record.name,
@@ -54,6 +61,13 @@ export function Search() {
           ...people.map(record => ({
             type: 'contact' as const, title: record.name, company: '', subtitle: record.position || record.email,
             href: '#/customers/contacts/' + record.id,
+          })),
+          ...leads.map(lead => ({
+            type: 'lead' as const, title: lead.title, company: '', subtitle: lead.deal_id ? 'Converted' : 'Open',
+            href: salesLink('leads', lead.id),
+          })),
+          ...liveDeals.map(deal => ({
+            type: 'deal' as const, title: deal.title, company: '', subtitle: '', href: salesLink('deals', deal.id),
           })),
         ];
         if (!abort.signal.aborted) setLive({ term, results: hits });
@@ -68,7 +82,7 @@ export function Search() {
     const stage = workspace.sales.stages[deal.stage];
     const amount = money(deal.amount, locale);
     results.push({
-      type: 'deal', title: deal.title, company: deal.company, href: deal.href, suggested: deal.id === 'orbita',
+      type: 'deal', demo: true, title: deal.title, company: deal.company, href: deal.href, suggested: deal.id === 'orbita',
       subtitle: [deal.company, stage, amount].join(' · '),
       fields: [[workspace.general.company, deal.company], [workspace.general.stage, stage], [workspace.general.amount, amount], [workspace.general.nextStep, deal.activity]],
     });
@@ -76,7 +90,7 @@ export function Search() {
   for (const meeting of meetings) {
     const account = overview.accounts[meeting.id];
     results.push({
-      type: 'meeting', title: [account.company, copy.meeting.names[meeting.id]].join(' · '), company: account.company,
+      type: 'meeting', demo: true, title: [account.company, copy.meeting.names[meeting.id]].join(' · '), company: account.company,
       subtitle: fill(copy.meeting.shortTime, { time: timeLabel(meeting.startsAt, locale) }), href: '#/meeting/' + meeting.id,
       suggested: meeting.id === 'orbita',
     });
@@ -86,7 +100,7 @@ export function Search() {
     const date = dateLabel(start, locale, { month: 'short', day: 'numeric' });
     const time = timeLabel(start, locale);
     results.push({
-      type: 'meeting', title: [company, workspace.calendar.names[kind]].join(' · '), company,
+      type: 'meeting', demo: true, title: [company, workspace.calendar.names[kind]].join(' · '), company,
       subtitle: [date, time].join(' · '),
       fields: [[workspace.general.company, company], [workspace.general.date, date], [workspace.general.time, time]],
     });
@@ -114,7 +128,7 @@ export function Search() {
         : <p className="detail-muted" role="status">{found ? formatCount(copy.search.resultCount, filtered.length, locale) : 'Searching…'}</p>}
       <ul className="detail-results-list">{filtered.map(result => {
         const content = <><img src={icons[result.type]} alt="" /><span><strong>{result.title}</strong>
-          <small>{[copy.search[result.type], result.subtitle, ['deal','meeting'].includes(result.type) ? 'Demo' : ''].filter(Boolean).join(' · ')}</small></span></>;
+          <small>{[copy.search[result.type], result.subtitle, result.demo ? 'Demo' : ''].filter(Boolean).join(' · ')}</small></span></>;
         return <li key={result.href ?? [result.type, result.company, result.title].join('/')}>{result.href
           ? <a href={result.href}>{content}</a>
           : <button type="button" onClick={() => setSelection(result)}>{content}</button>}</li>;

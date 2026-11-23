@@ -4,7 +4,7 @@ export const detailsEn = {
   search: {
     title: 'Search CRM',
     subtitle: 'Results are limited to records you can access.',
-    placeholder: 'Search companies, contacts, deals and meetings',
+    placeholder: 'Search companies, contacts, leads, deals and meetings',
     results: 'Results',
     suggested: 'Suggested records',
     resultCount: { one: '{count} record you can access', other: '{count} records you can access' } as CountMessage,
@@ -12,6 +12,7 @@ export const detailsEn = {
     companyTitle: '{company} company profile',
     company: 'Company',
     contact: 'Contact',
+    lead: 'Lead',
     deal: 'Deal',
     meeting: 'Meeting',
     relatedDeal: 'Open related deal',

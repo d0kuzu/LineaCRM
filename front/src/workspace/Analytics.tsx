@@ -19,7 +19,7 @@ export function Analytics() {
     <PageTitle title={copy.title} description={copy.description}/>
     <div className="ws-filters ws-switcher" role="group" aria-label={copy.title}>
       <button className="ws-pill" aria-pressed={!teamView} onClick={() => setTeamView(false)}>{copy.summary}</button>
-      <a className="ws-pill" href="#/sales">{copy.pipeline}</a>
+      <a className="ws-pill" href="#/sales/pipeline">{copy.pipeline}</a>
       <button className="ws-pill" aria-pressed={teamView} onClick={() => setTeamView(true)}>{copy.team}</button>
     </div>
     {!teamView && <>

@@ -118,7 +118,7 @@ function NeedsAttention() {
     <section className="overview-panel overview-attention" aria-labelledby="needs-attention">
       <header>
         <h2 id="needs-attention">{copy.attention}</h2>
-        <a className="overview-button" href="#/sales">{copy.allDeals}</a>
+        <a className="overview-button" href="#/sales/pipeline">{copy.allDeals}</a>
       </header>
       <div className="overview-table-wrap">
         <table className="overview-deals" aria-labelledby="needs-attention">

@@ -22,7 +22,15 @@ func NewRouter(a *app.App) *gin.Engine {
 		return fmt.Sprintf("%s %s %d %s %s\n", p.Method, p.Request.URL.Path, p.StatusCode, p.Latency, p.ErrorMessage)
 	}), gin.Recovery())
 	records := router.Group("/workspaces/:workspace_id", authorize(a.Access))
-	h := handlers{db: a.DB}
+	h := handlers{db: a.DB, access: a.Access}
+	records.GET("/leads", salesList(a.DB.ListLeads))
+	records.POST("/leads", h.writeLead)
+	records.GET("/leads/:id", getSalesRecord(a.DB.GetLead))
+	records.PATCH("/leads/:id", h.writeLead)
+	records.POST("/leads/:id/convert", h.convertLead)
+	records.GET("/deals", salesList(a.DB.ListDeals))
+	records.GET("/deals/:id", getSalesRecord(a.DB.GetDeal))
+	records.PATCH("/deals/:id", h.updateDealLinks)
 	fields := records.Group("/fields/:kind", fieldKind)
 	fields.GET("", h.listFields)
 	fields.POST("", requireFieldAdmin, h.writeField)
@@ -107,7 +115,8 @@ func recordID(c *gin.Context) string {
 }
 
 type handlers struct {
-	db *database.Store
+	db     *database.Store
+	access accessChecker
 }
 
 func recordResponse(c *gin.Context, status int, data any, err error) {
@@ -116,6 +125,12 @@ func recordResponse(c *gin.Context, status int, data any, err error) {
 		c.JSON(status, data)
 	case errors.Is(err, database.ErrNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "record not found"})
+	case errors.Is(err, database.ErrLeadConverted):
+		c.JSON(http.StatusConflict, gin.H{"error": "this lead has already been converted"})
+	case errors.Is(err, database.ErrSalesForbidden):
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+	case errors.Is(err, database.ErrDealContactLimit), errors.Is(err, database.ErrDealLinkConflict):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrInvalidField):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrFieldConflict):

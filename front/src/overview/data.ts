@@ -15,10 +15,10 @@ export const meetings = [
 ] as const;
 
 export const metrics = [
-  { id: 'active', value: 12, icon: 'metric-icon.svg', route: 'sales' },
+  { id: 'active', value: 12, icon: 'metric-icon.svg', route: 'sales/pipeline' },
   { id: 'meetings', value: meetings.length, icon: 'metric-icon1.svg', route: 'calendar' },
   { id: 'tasks', value: 8, icon: 'metric-icon2.svg', route: 'tasks' },
-  { id: 'inactive', value: 4, icon: 'metric-icon3.svg', route: 'sales' },
+  { id: 'inactive', value: 4, icon: 'metric-icon3.svg', route: 'sales/pipeline' },
   { id: 'suggestions', value: 2, icon: 'metric-icon4.svg', route: 'assistant' },
 ] as const;
 
