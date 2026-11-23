@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useCrm } from '../crm/session';
 import { ApiError } from '../crm/http';
 import { CompanyPicker } from './CompanyPicker';
+import { DealParameterFields, parameterChanges, parameterDraft } from './DealParameters';
 import { accessError, errorMessage, useCustomerData, type Customer, type Member } from './customerData';
 import type { Lead, SalesKind } from './salesData';
 
@@ -198,6 +199,7 @@ export function LeadForm({
   const [description, setDescription] = useState(lead?.description ?? '');
   const [owner, setOwner] = useState(lead?.owner_id ?? profile.id);
   const [company, setCompany] = useState('');
+  const [parameters, setParameters] = useState(() => parameterDraft());
   const [contacts, setContacts] = useState<LinkedContact[]>([]);
   const [teamRevision, setTeamRevision] = useState(0);
   const roster = useCustomerData<Member[]>(
@@ -228,9 +230,15 @@ export function LeadForm({
       setError('Description must be 4,000 characters or fewer.');
       return;
     }
-    const payload: Record<string, string | string[]> = {};
+    const payload: Record<string, string | string[] | number | null> = {};
     if (!lead || convert || name !== lead.title) payload.title = name;
     if (convert) {
+      try {
+        Object.assign(payload, parameterChanges(parameters));
+      } catch (cause) {
+        setError(errorMessage(cause));
+        return;
+      }
       if (company) payload.company_id = company;
       if (contacts.length) payload.contact_ids = contacts.map((contact) => contact.id);
     } else {
@@ -276,13 +284,16 @@ export function LeadForm({
           <input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
         {convert ? (
-          <DealLinkFields
-            company={company}
-            setCompany={setCompany}
-            contacts={contacts}
-            setContacts={setContacts}
-            onDenied={onDenied}
-          />
+          <>
+            <DealParameterFields draft={parameters} setDraft={setParameters} />
+            <DealLinkFields
+              company={company}
+              setCompany={setCompany}
+              contacts={contacts}
+              setContacts={setContacts}
+              onDenied={onDenied}
+            />
+          </>
         ) : (
           <>
             <label className="customer-wide">

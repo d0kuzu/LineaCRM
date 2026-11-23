@@ -11,6 +11,7 @@ import (
 )
 
 type Deal struct {
+	DealTerms
 	ID          string    `json:"id"`
 	WorkspaceID string    `json:"workspace_id"`
 	OwnerID     string    `json:"owner_id"`
@@ -22,12 +23,14 @@ type Deal struct {
 }
 
 type ConversionInput struct {
+	DealTermsPatch
 	Title      *string  `json:"title"`
 	CompanyID  *string  `json:"company_id"`
 	ContactIDs []string `json:"contact_ids"`
 }
 
-type DealLinksInput struct {
+type DealUpdateInput struct {
+	DealTermsPatch
 	CompanyID        *string  `json:"company_id"`
 	AddContactIDs    []string `json:"add_contact_ids"`
 	RemoveContactIDs []string `json:"remove_contact_ids"`
@@ -42,6 +45,7 @@ var (
 // customer IDs the current reader can access, including on conversion retries.
 const readDeals = `
 	SELECT d.id, d.workspace_id, d.owner_id, d.lead_id, d.title, d.created_at, company.id AS company_id,
+		d.amount::text AS amount, d.currency, to_char(d.expected_close_date, 'YYYY-MM-DD') AS expected_close_date, d.probability,
 		ARRAY(SELECT c.id FROM deal_contacts link
 		      JOIN contacts c ON c.workspace_id = link.workspace_id AND c.id = link.contact_id
 		      WHERE link.workspace_id = d.workspace_id AND link.deal_id = d.id AND ($3 OR c.owner_id = $2)
@@ -126,18 +130,25 @@ func changeDealContacts(ctx context.Context, tx pgx.Tx, scope Scope, dealID stri
 	return nil
 }
 
-func (s *Store) UpdateDealLinks(ctx context.Context, scope Scope, id string, input DealLinksInput) (Deal, error) {
+func (s *Store) UpdateDeal(ctx context.Context, scope Scope, id string, input DealUpdateInput) (Deal, error) {
 	var deal Deal
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var currentCompany *string
-		err := tx.QueryRow(ctx, `SELECT company_id FROM deals WHERE workspace_id = $1 AND ($3 OR owner_id = $2)
-			AND id = $4 FOR UPDATE`, scope.WorkspaceID, scope.UserID, scope.All, id).Scan(&currentCompany)
+		var previous DealTerms
+		err := tx.QueryRow(ctx, `SELECT company_id, amount::text, currency, to_char(expected_close_date, 'YYYY-MM-DD'), probability
+			FROM deals WHERE workspace_id = $1 AND ($3 OR owner_id = $2) AND id = $4 FOR UPDATE`,
+			scope.WorkspaceID, scope.UserID, scope.All, id).Scan(&currentCompany, &previous.Amount, &previous.Currency, &previous.ExpectedCloseDate, &previous.Probability)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
+		next, err := input.DealTermsPatch.apply(previous)
+		if err != nil {
+			return err
+		}
+		changes := next.changesFrom(previous)
 		if input.CompanyID != nil {
 			if currentCompany != nil && !scope.All {
 				if err := checkDealCompany(ctx, tx, scope, *currentCompany); err != nil {
@@ -148,14 +159,23 @@ func (s *Store) UpdateDealLinks(ctx context.Context, scope Scope, id string, inp
 				if err := checkDealCompany(ctx, tx, scope, *input.CompanyID); err != nil {
 					return err
 				}
+				currentCompany = input.CompanyID
+			} else {
+				currentCompany = nil
 			}
-			_, err := tx.Exec(ctx, "UPDATE deals SET company_id = NULLIF($3, '') WHERE workspace_id = $1 AND id = $2",
-				scope.WorkspaceID, id, *input.CompanyID)
+		}
+		if input.CompanyID != nil || len(changes) > 0 {
+			_, err := tx.Exec(ctx, `UPDATE deals SET company_id = $3, amount = $4::text::numeric, currency = $5,
+				expected_close_date = $6::text::date, probability = $7 WHERE workspace_id = $1 AND id = $2`,
+				scope.WorkspaceID, id, currentCompany, next.Amount, next.Currency, next.ExpectedCloseDate, next.Probability)
 			if err != nil {
 				return err
 			}
 		}
 		if err := changeDealContacts(ctx, tx, scope, id, input.AddContactIDs, input.RemoveContactIDs); err != nil {
+			return err
+		}
+		if err := appendDealChanges(ctx, tx, scope, id, "updated", changes); err != nil {
 			return err
 		}
 		deal, err = one[Deal](tx.Query(ctx, dealByID, scope.WorkspaceID, scope.UserID, scope.All, id))
@@ -179,6 +199,10 @@ func (s *Store) ConvertLead(ctx context.Context, scope Scope, id string, input C
 			deal, err = one[Deal](tx.Query(ctx, dealByID, scope.WorkspaceID, scope.UserID, scope.All, *lead.DealID))
 			return err
 		}
+		terms, err := input.DealTermsPatch.apply(DealTerms{})
+		if err != nil {
+			return err
+		}
 		var companyID *string
 		if input.CompanyID != nil && *input.CompanyID != "" {
 			if err := checkDealCompany(ctx, tx, scope, *input.CompanyID); err != nil {
@@ -191,12 +215,16 @@ func (s *Store) ConvertLead(ctx context.Context, scope Scope, id string, input C
 			title = strings.TrimSpace(*input.Title)
 		}
 		dealID := uuid.NewString()
-		_, err = tx.Exec(ctx, `INSERT INTO deals (workspace_id, id, owner_id, lead_id, title, company_id)
-			VALUES ($1, $2, $3, $4, $5, $6)`, scope.WorkspaceID, dealID, lead.OwnerID, lead.ID, title, companyID)
+		_, err = tx.Exec(ctx, `INSERT INTO deals (workspace_id, id, owner_id, lead_id, title, company_id, amount, currency, expected_close_date, probability)
+			VALUES ($1, $2, $3, $4, $5, $6, $7::text::numeric, $8, $9::text::date, $10)`, scope.WorkspaceID,
+			dealID, lead.OwnerID, lead.ID, title, companyID, terms.Amount, terms.Currency, terms.ExpectedCloseDate, terms.Probability)
 		if err != nil {
 			return err
 		}
 		if err := changeDealContacts(ctx, tx, scope, dealID, input.ContactIDs, nil); err != nil {
+			return err
+		}
+		if err := appendDealChanges(ctx, tx, scope, dealID, "created", terms.changesFrom(DealTerms{})); err != nil {
 			return err
 		}
 		_, err = tx.Exec(ctx, `UPDATE leads SET updated_at = GREATEST(updated_at, statement_timestamp())

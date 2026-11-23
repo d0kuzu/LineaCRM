@@ -9,7 +9,13 @@ export type Lead = {
   created_at: string;
   updated_at: string;
 };
-export type Deal = {
+export type DealParameters = {
+  amount: string | null;
+  currency: string | null;
+  expected_close_date: string | null;
+  probability: number | null;
+};
+export type Deal = DealParameters & {
   id: string;
   workspace_id: string;
   owner_id: string;

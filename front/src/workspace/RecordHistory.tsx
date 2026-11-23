@@ -9,6 +9,7 @@ const eventNames: Record<string,string> = {
 const fieldNames: Record<string,string> = {
   name: 'Name', phone: 'Phone', email: 'Email', tags: 'Tags', segment: 'Segment',
   company_id: 'Company', owner_id: 'Owner', position: 'Position',
+  amount: 'Amount', currency: 'Currency', expected_close_date: 'Expected close date', probability: 'Probability',
 };
 interface Entry {
   id: string; kind: string; actor_id: string; created_at: string; body?: string;
@@ -19,10 +20,11 @@ function filled(value: unknown) {
   return value != null && value !== '' && (!Array.isArray(value) || value.length > 0);
 }
 
-export function CustomerHistory({ recordPath, canWrite, participant, linkedCompany, fieldDefinitions, onAccessError }: {
-  recordPath: string; canWrite: boolean; participant: (id: string) => string; onAccessError: (error: unknown) => void;
+export function RecordHistory({ kind = 'customer', recordPath, canWrite = false, participant, linkedCompany, fieldDefinitions = [], onAccessError }: {
+  kind?: 'customer' | 'deal';
+  recordPath: string; canWrite?: boolean; participant: (id: string) => string; onAccessError: (error: unknown) => void;
   linkedCompany?: { id: string; name: string };
-  fieldDefinitions: FieldDefinition[];
+  fieldDefinitions?: FieldDefinition[];
 }) {
   const { request } = useCrm();
   const { locale } = useLocale();
@@ -43,6 +45,7 @@ export function CustomerHistory({ recordPath, canWrite, participant, linkedCompa
   }
   function displayValue(field: string, value: unknown): string {
     if (!filled(value)) return 'Empty';
+    if (field === 'probability') return String(value) + '%';
     if (field === 'owner_id' && typeof value === 'string') return participant(value);
     if (field === 'company_id' && linkedCompany && linkedCompany.id === value) return linkedCompany.name;
     if (Array.isArray(value)) return value.join(', ');
@@ -97,8 +100,8 @@ export function CustomerHistory({ recordPath, canWrite, participant, linkedCompa
       if (!controller.signal.aborted) setSaving(false);
     }
   }
-  return <section className="customer-history"><h3>History</h3>
-    {canWrite && <form onSubmit={add} className="customer-interaction">
+  return <section className="customer-history"><h3>{kind === 'deal' ? 'Deal parameter history' : 'History'}</h3>
+    {kind === 'customer' && canWrite && <form onSubmit={add} className="customer-interaction">
       <label>Interaction<select value={interaction} onChange={event => setInteraction(event.target.value)} disabled={saving}>
         {['note', 'call', 'meeting', 'email'].map(kind => <option key={kind} value={kind}>{eventNames[kind]}</option>)}
       </select></label>
@@ -109,7 +112,7 @@ export function CustomerHistory({ recordPath, canWrite, participant, linkedCompa
     </form>}
     {error && <p role="alert" className="customer-error">{error} <button className="ws-text-button" onClick={() => void load()}>Retry history</button></p>}
     {items && <ol className="customer-timeline">{items.map(entry => <li key={entry.id}>
-      <strong>{eventNames[entry.kind] ?? entry.kind}</strong>
+      <strong>{kind === 'deal' ? (entry.kind === 'created' ? 'Deal created' : 'Deal updated') : (eventNames[entry.kind] ?? entry.kind)}</strong>
       <small>{participant(entry.actor_id)} · <time dateTime={entry.created_at}>{timestamp(entry.created_at, locale)}</time></small>
       {entry.body && <p>{entry.body}</p>}
       {Object.entries(entry.changes ?? {})
@@ -117,7 +120,7 @@ export function CustomerHistory({ recordPath, canWrite, participant, linkedCompa
         .map(([field, change]) => <p key={field} className="customer-change">
           <b>{labelFor(field, change.label)}</b> {entry.kind !== 'created' && <>{displayValue(field, change.before)} → </>}{displayValue(field, change.after)}</p>)}
     </li>)}</ol>}
-    {items?.length === 0 && <p className="ws-subtext">No history yet.</p>}
+    {items?.length === 0 && <p className="ws-subtext">{kind === 'deal' ? 'No parameter changes yet.' : 'No history yet.'}</p>}
     {loading && <p role="status" className="ws-subtext">Loading history…</p>}
     {cursor && <button type="button" className="ws-pill" disabled={loading} onClick={() => void load(cursor)}>Load older events</button>}
   </section>;

@@ -92,16 +92,16 @@ func (h *handlers) convertLead(c *gin.Context) {
 	recordResponse(c, status, deal, err)
 }
 
-func (h *handlers) updateDealLinks(c *gin.Context) {
+func (h *handlers) updateDeal(c *gin.Context) {
 	body, ok := readBody(c, 64<<10)
 	if !ok {
 		return
 	}
-	input, err := dealLinksInput(body)
+	input, err := dealUpdateInput(body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	deal, err := h.db.UpdateDealLinks(c.Request.Context(), scope(c), recordID(c), input)
+	deal, err := h.db.UpdateDeal(c.Request.Context(), scope(c), recordID(c), input)
 	recordResponse(c, http.StatusOK, deal, err)
 }

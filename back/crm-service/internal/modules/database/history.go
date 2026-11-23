@@ -29,7 +29,7 @@ type HistoryPage struct {
 	NextCursor *string        `json:"next_cursor"`
 }
 
-// Only the two package-defined sources are used to construct SQL identifiers.
+// Only package-defined sources are used to construct SQL identifiers.
 type historySource struct {
 	table, foreignKey, fields string
 }

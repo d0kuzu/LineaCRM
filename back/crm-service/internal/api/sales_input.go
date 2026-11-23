@@ -70,10 +70,36 @@ func conversionInput(body []byte) (database.ConversionInput, error) {
 			input.ContactIDs = ids
 			return err
 		default:
-			return errors.New("unknown conversion field")
+			return readDealTerm(name, decoder, &input.DealTermsPatch)
 		}
 	})
+	if err == nil {
+		err = input.DealTermsPatch.Validate()
+	}
 	return input, err
+}
+
+func nullableDealValue[T any](decoder *json.Decoder, field *database.Optional[T], name, kind string) error {
+	if err := decoder.Decode(&field.Value); err != nil {
+		return fmt.Errorf("%s must be %s or null", name, kind)
+	}
+	field.Present = true
+	return nil
+}
+
+func readDealTerm(name string, decoder *json.Decoder, terms *database.DealTermsPatch) error {
+	switch name {
+	case "amount":
+		return nullableDealValue(decoder, &terms.Amount, name, "a decimal string")
+	case "currency":
+		return nullableDealValue(decoder, &terms.Currency, name, "an ISO currency code")
+	case "expected_close_date":
+		return nullableDealValue(decoder, &terms.ExpectedCloseDate, name, "a date in YYYY-MM-DD format")
+	case "probability":
+		return nullableDealValue(decoder, &terms.Probability, name, "an integer from 0 to 100")
+	default:
+		return errors.New("unknown deal field")
+	}
 }
 
 func companyLink(decoder *json.Decoder) (*string, error) {
@@ -101,8 +127,8 @@ func contactLinks(decoder *json.Decoder) ([]string, error) {
 	return ids, nil
 }
 
-func dealLinksInput(body []byte) (database.DealLinksInput, error) {
-	var input database.DealLinksInput
+func dealUpdateInput(body []byte) (database.DealUpdateInput, error) {
+	var input database.DealUpdateInput
 	err := decodeFieldsObject(body, false, func(name string, decoder *json.Decoder) error {
 		var err error
 		switch name {
@@ -116,9 +142,12 @@ func dealLinksInput(body []byte) (database.DealLinksInput, error) {
 		case "remove_contact_ids":
 			input.RemoveContactIDs, err = contactLinks(decoder)
 		default:
-			return errors.New("unknown deal link field")
+			return readDealTerm(name, decoder, &input.DealTermsPatch)
 		}
 		return err
 	})
+	if err == nil {
+		err = input.DealTermsPatch.Validate()
+	}
 	return input, err
 }

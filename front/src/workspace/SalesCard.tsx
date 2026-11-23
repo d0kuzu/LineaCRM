@@ -10,6 +10,8 @@ import {
   type Customer,
 } from './customerData';
 import { DealLinkFields, LeadForm, type LinkedContact } from './LeadForm';
+import { EditDealParameters, amountLabel, probabilityLabel } from './DealParameters';
+import { RecordHistory } from './RecordHistory';
 import { salesLink, type Deal, type Lead, type SalesKind } from './salesData';
 import { Fields, RecordDialog } from './shared';
 
@@ -195,7 +197,7 @@ export function SalesCard({
 }) {
   const { workspace } = useCrm();
   const { locale } = useLocale();
-  const [mode, setMode] = useState<'view' | 'edit' | 'convert'>('view');
+  const [mode, setMode] = useState<'view' | 'edit' | 'convert' | 'parameters'>('view');
   const [revision, setRevision] = useState(0);
   const [denied, setDenied] = useState(false);
   const base = '/crm/workspaces/' + workspace.id;
@@ -218,18 +220,13 @@ export function SalesCard({
     lead = row && 'deal_id' in row ? row : null,
     deal = row && 'lead_id' in row ? row : null;
   const canWrite = workspace.role !== 'support';
-  const title =
-    denied || !row
-      ? kind === 'leads'
-        ? 'Lead'
-        : 'Deal'
-      : mode === 'convert'
-        ? 'Convert lead'
-        : mode === 'edit'
-          ? lead
-            ? 'Edit lead'
-            : 'Edit deal links'
-          : row.title;
+  const titles = {
+    view: row?.title,
+    convert: 'Convert lead',
+    edit: lead ? 'Edit lead' : 'Edit deal links',
+    parameters: 'Edit deal parameters',
+  };
+  const title = (!denied && titles[mode]) || (kind === 'leads' ? 'Lead' : 'Deal');
   return (
     <RecordDialog title={title} onClose={onClose}>
       <div className="customer-card">
@@ -258,6 +255,13 @@ export function SalesCard({
           />
         ) : canWrite && mode === 'edit' && deal ? (
           <EditDealLinks deal={deal} onSaved={reload} onCancel={() => setMode('view')} onDenied={onDenied} />
+        ) : canWrite && mode === 'parameters' && deal ? (
+          <EditDealParameters
+            deal={deal}
+            onSaved={reload}
+            onCancel={() => setMode('view')}
+            onDenied={onDenied}
+          />
         ) : (
           <>
             <Fields
@@ -268,6 +272,13 @@ export function SalesCard({
                   ? ([
                       ['Status', lead.deal_id ? 'Converted' : 'Open'],
                       ['Updated', timestamp(lead.updated_at, locale)],
+                    ] as [string, string][])
+                  : []),
+                ...(deal
+                  ? ([
+                      ['Amount', amountLabel(deal, locale)],
+                      ['Expected close date', deal.expected_close_date ?? '—'],
+                      ['Probability', probabilityLabel(deal.probability)],
                     ] as [string, string][])
                   : []),
               ]}
@@ -303,11 +314,22 @@ export function SalesCard({
             {deal && (
               <>
                 {canWrite && (
-                  <button className="ws-pill" onClick={() => setMode('edit')}>
-                    Edit links
-                  </button>
+                  <div className="customer-actions">
+                    <button className="ws-action" onClick={() => setMode('parameters')}>
+                      Edit parameters
+                    </button>
+                    <button className="ws-pill" onClick={() => setMode('edit')}>
+                      Edit links
+                    </button>
+                  </div>
                 )}
                 <DealRelations deal={deal} onDenied={onDenied} />
+                <RecordHistory
+                  kind="deal"
+                  recordPath={base + '/deals/' + deal.id}
+                  participant={ownerLabel}
+                  onAccessError={onDenied}
+                />
               </>
             )}
           </>

@@ -82,16 +82,16 @@ func TestSalesInputs(t *testing.T) {
 			t.Errorf("invalid conversion accepted: %.75s", raw)
 		}
 	}
-	clear, err := dealLinksInput([]byte(`{"company_id":null}`))
+	clear, err := dealUpdateInput([]byte(`{"company_id":null}`))
 	if err != nil || clear.CompanyID == nil || *clear.CompanyID != "" || clear.AddContactIDs != nil {
 		t.Fatal(clear, err)
 	}
-	patch, err := dealLinksInput([]byte(`{"remove_contact_ids":["` + id + `"]}`))
+	patch, err := dealUpdateInput([]byte(`{"remove_contact_ids":["` + id + `"]}`))
 	if err != nil || patch.CompanyID != nil || len(patch.RemoveContactIDs) != 1 || patch.RemoveContactIDs[0] != testWorkspace {
 		t.Fatal(patch, err)
 	}
 	for _, raw := range []string{`{}`, `{"contact_ids":[]}`, `{"add_contact_ids":"x"}`, `{"lead_id":"x"}`, `{"company_id":"bad"}`} {
-		if _, err := dealLinksInput([]byte(raw)); err == nil {
+		if _, err := dealUpdateInput([]byte(raw)); err == nil {
 			t.Errorf("invalid deal patch accepted: %s", raw)
 		}
 	}

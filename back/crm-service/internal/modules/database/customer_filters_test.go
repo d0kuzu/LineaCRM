@@ -1,23 +1,33 @@
 package database
 
 import (
+	"context"
 	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
 )
 
-func TestExistingCustomersGainEmptyClassification(t *testing.T) {
-	ctx, dsn := t.Context(), testDatabaseURL(t)
+func openBeforeMigration(t *testing.T, dsn, stopBefore string) *pgx.Conn {
+	t.Helper()
+	ctx := t.Context()
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(ctx)
+	t.Cleanup(func() { conn.Close(context.Background()) })
 	if _, err := conn.Exec(ctx, "CREATE TABLE crm_schema_migrations (version text PRIMARY KEY)"); err != nil {
 		t.Fatal(err)
 	}
-	for _, version := range []string{"001_customers.sql", "002_customer_search.sql"} {
+	entries, err := migrations.ReadDir("migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		version := entry.Name()
+		if version == stopBefore {
+			return conn
+		}
 		body, err := migrations.ReadFile("migrations/" + version)
 		if err != nil {
 			t.Fatal(err)
@@ -29,6 +39,13 @@ func TestExistingCustomersGainEmptyClassification(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	t.Fatalf("unknown migration %s", stopBefore)
+	return nil
+}
+
+func TestExistingCustomersGainEmptyClassification(t *testing.T) {
+	ctx, dsn := t.Context(), testDatabaseURL(t)
+	conn := openBeforeMigration(t, dsn, "003_customer_classification.sql")
 	if _, err := conn.Exec(ctx, `
 		INSERT INTO companies (workspace_id, id, owner_id, name) VALUES ('w', 'co', 'u', 'Company');
 		INSERT INTO contacts (workspace_id, id, owner_id, name, company_id) VALUES ('w', 'ct', 'u', 'Contact', 'co');

@@ -3,6 +3,7 @@ import { useCrm } from '../crm/session';
 import { useLocale } from '../i18n';
 import type { SalesLocation } from '../routes';
 import { LeadForm } from './LeadForm';
+import { amountLabel, probabilityLabel } from './DealParameters';
 import { PipelinePreview } from './PipelinePreview';
 import { SalesCard } from './SalesCard';
 import { accessError, errorMessage, useCustomerData, type Member } from './customerData';
@@ -169,6 +170,13 @@ function SalesDirectory({ kind, id, switcher }: { kind: SalesKind; id?: string; 
                 <tr>
                   <th>{kind === 'leads' ? 'Lead' : 'Deal'}</th>
                   <th>Owner</th>
+                  {kind === 'deals' && (
+                    <>
+                      <th>Amount</th>
+                      <th>Expected close date</th>
+                      <th>Probability</th>
+                    </>
+                  )}
                   <th>{kind === 'leads' ? 'Status' : 'Source'}</th>
                   <th>Created</th>
                 </tr>
@@ -182,6 +190,13 @@ function SalesDirectory({ kind, id, switcher }: { kind: SalesKind; id?: string; 
                       </a>
                     </td>
                     <td>{ownerLabel(row.owner_id)}</td>
+                    {'lead_id' in row && (
+                      <>
+                        <td>{amountLabel(row, locale)}</td>
+                        <td>{row.expected_close_date ?? '—'}</td>
+                        <td>{probabilityLabel(row.probability)}</td>
+                      </>
+                    )}
                     <td>
                       {'deal_id' in row ? (
                         row.deal_id ? (

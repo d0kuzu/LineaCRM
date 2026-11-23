@@ -30,7 +30,8 @@ func NewRouter(a *app.App) *gin.Engine {
 	records.POST("/leads/:id/convert", h.convertLead)
 	records.GET("/deals", salesList(a.DB.ListDeals))
 	records.GET("/deals/:id", getSalesRecord(a.DB.GetDeal))
-	records.PATCH("/deals/:id", h.updateDealLinks)
+	records.PATCH("/deals/:id", h.updateDeal)
+	records.GET("/deals/:id/history", historyHandler(a.DB.DealHistory))
 	fields := records.Group("/fields/:kind", fieldKind)
 	fields.GET("", h.listFields)
 	fields.POST("", requireFieldAdmin, h.writeField)
@@ -129,7 +130,7 @@ func recordResponse(c *gin.Context, status int, data any, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": "this lead has already been converted"})
 	case errors.Is(err, database.ErrSalesForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-	case errors.Is(err, database.ErrDealContactLimit), errors.Is(err, database.ErrDealLinkConflict):
+	case errors.Is(err, database.ErrDealContactLimit), errors.Is(err, database.ErrDealLinkConflict), errors.Is(err, database.ErrInvalidDealTerms):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrInvalidField):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

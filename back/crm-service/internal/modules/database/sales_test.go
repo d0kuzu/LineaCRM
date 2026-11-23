@@ -173,7 +173,7 @@ func TestConcurrentLeadConversionAndRollback(t *testing.T) {
 		if _, err := db.GetDeal(ctx, hidden, original.ID); !errors.Is(err, ErrNotFound) {
 			t.Fatal(err)
 		}
-		if _, err := db.UpdateDealLinks(ctx, hidden, original.ID, DealLinksInput{CompanyID: str("")}); !errors.Is(err, ErrNotFound) {
+		if _, err := db.UpdateDeal(ctx, hidden, original.ID, DealUpdateInput{CompanyID: str("")}); !errors.Is(err, ErrNotFound) {
 			t.Fatal(err)
 		}
 	}
@@ -198,7 +198,7 @@ func TestDealLinksCurrentAccessAndPreservation(t *testing.T) {
 	if err != nil || !created || deal.Title != lead.Title || deal.CompanyID != nil || deal.ContactIDs == nil || len(deal.ContactIDs) != 0 {
 		t.Fatal(deal, created, err)
 	}
-	linked, err := db.UpdateDealLinks(ctx, manager, deal.ID, DealLinksInput{CompanyID: &hiddenCo.ID, AddContactIDs: []string{hidden.ID, a.ID}})
+	linked, err := db.UpdateDeal(ctx, manager, deal.ID, DealUpdateInput{CompanyID: &hiddenCo.ID, AddContactIDs: []string{hidden.ID, a.ID}})
 	if err != nil || linked.CompanyID == nil || *linked.CompanyID != hiddenCo.ID || !slices.Equal(linked.ContactIDs, []string{hidden.ID, a.ID}) {
 		t.Fatal(linked, err)
 	}
@@ -215,15 +215,15 @@ func TestDealLinksCurrentAccessAndPreservation(t *testing.T) {
 		t.Fatal(retry, created, err)
 	}
 	for _, target := range []string{"", visibleCo.ID, hiddenCo.ID} {
-		if _, err := db.UpdateDealLinks(ctx, owner, deal.ID, DealLinksInput{CompanyID: &target, RemoveContactIDs: []string{a.ID}}); !errors.Is(err, ErrNotFound) {
+		if _, err := db.UpdateDeal(ctx, owner, deal.ID, DealUpdateInput{CompanyID: &target, RemoveContactIDs: []string{a.ID}}); !errors.Is(err, ErrNotFound) {
 			t.Fatal(target, err)
 		}
 	}
-	if _, err := db.UpdateDealLinks(ctx, owner, deal.ID, DealLinksInput{RemoveContactIDs: []string{hidden.ID}, AddContactIDs: []string{b.ID}}); !errors.Is(err, ErrNotFound) {
+	if _, err := db.UpdateDeal(ctx, owner, deal.ID, DealUpdateInput{RemoveContactIDs: []string{hidden.ID}, AddContactIDs: []string{b.ID}}); !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		result, err := db.UpdateDealLinks(ctx, owner, deal.ID, DealLinksInput{AddContactIDs: []string{b.ID, b.ID}, RemoveContactIDs: []string{a.ID}})
+		result, err := db.UpdateDeal(ctx, owner, deal.ID, DealUpdateInput{AddContactIDs: []string{b.ID, b.ID}, RemoveContactIDs: []string{a.ID}})
 		if err != nil || result.CompanyID != nil || !slices.Equal(result.ContactIDs, []string{b.ID}) {
 			t.Fatal(result, err)
 		}
@@ -232,10 +232,10 @@ func TestDealLinksCurrentAccessAndPreservation(t *testing.T) {
 	if err != nil || visible.CompanyID == nil || *visible.CompanyID != hiddenCo.ID || !slices.Equal(visible.ContactIDs, []string{hidden.ID, b.ID}) {
 		t.Fatal(visible, err)
 	}
-	if _, err := db.UpdateDealLinks(ctx, manager, deal.ID, DealLinksInput{CompanyID: &visibleCo.ID, AddContactIDs: []string{a.ID, "missing"}}); !errors.Is(err, ErrNotFound) {
+	if _, err := db.UpdateDeal(ctx, manager, deal.ID, DealUpdateInput{CompanyID: &visibleCo.ID, AddContactIDs: []string{a.ID, "missing"}}); !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}
-	if _, err := db.UpdateDealLinks(ctx, manager, deal.ID, DealLinksInput{CompanyID: &visibleCo.ID, AddContactIDs: []string{a.ID}, RemoveContactIDs: []string{a.ID}}); !errors.Is(err, ErrDealLinkConflict) {
+	if _, err := db.UpdateDeal(ctx, manager, deal.ID, DealUpdateInput{CompanyID: &visibleCo.ID, AddContactIDs: []string{a.ID}, RemoveContactIDs: []string{a.ID}}); !errors.Is(err, ErrDealLinkConflict) {
 		t.Fatal(err)
 	}
 	visible, err = db.GetDeal(ctx, manager, deal.ID)
@@ -249,7 +249,7 @@ func TestDealLinksCurrentAccessAndPreservation(t *testing.T) {
 	if err != nil || redacted.ContactIDs == nil || len(redacted.ContactIDs) != 0 {
 		t.Fatal("customer reassignment did not revoke link visibility", redacted, err)
 	}
-	detached, err := db.UpdateDealLinks(ctx, manager, deal.ID, DealLinksInput{CompanyID: str("")})
+	detached, err := db.UpdateDeal(ctx, manager, deal.ID, DealUpdateInput{CompanyID: str("")})
 	if err != nil || detached.CompanyID != nil {
 		t.Fatal(detached, err)
 	}
@@ -275,18 +275,18 @@ func TestDealContactLimit(t *testing.T) {
 	if err != nil || !created || !slices.Equal(deal.ContactIDs, ids[:100]) {
 		t.Fatal(deal, created, err)
 	}
-	if _, err := db.UpdateDealLinks(ctx, owner, deal.ID, DealLinksInput{AddContactIDs: ids[100:]}); !errors.Is(err, ErrDealContactLimit) {
+	if _, err := db.UpdateDeal(ctx, owner, deal.ID, DealUpdateInput{AddContactIDs: ids[100:]}); !errors.Is(err, ErrDealContactLimit) {
 		t.Fatal(err)
 	}
 	unchanged, err := db.GetDeal(ctx, owner, deal.ID)
 	if err != nil || !slices.Equal(unchanged.ContactIDs, ids[:100]) {
 		t.Fatal(unchanged, err)
 	}
-	replaced, err := db.UpdateDealLinks(ctx, owner, deal.ID, DealLinksInput{RemoveContactIDs: ids[:1], AddContactIDs: ids[100:]})
+	replaced, err := db.UpdateDeal(ctx, owner, deal.ID, DealUpdateInput{RemoveContactIDs: ids[:1], AddContactIDs: ids[100:]})
 	if err != nil || !slices.Equal(replaced.ContactIDs, ids[1:]) {
 		t.Fatal(replaced, err)
 	}
-	if _, err := db.UpdateDealLinks(ctx, owner, deal.ID, DealLinksInput{RemoveContactIDs: ids[1:2]}); err != nil {
+	if _, err := db.UpdateDeal(ctx, owner, deal.ID, DealUpdateInput{RemoveContactIDs: ids[1:2]}); err != nil {
 		t.Fatal(err)
 	}
 	// Two edits contend for the last free slot. Counting must hold the deal lock
@@ -294,7 +294,7 @@ func TestDealContactLimit(t *testing.T) {
 	outcomes := make(chan error, 2)
 	for _, contactID := range []string{ids[0], "102"} {
 		go func() {
-			_, err := db.UpdateDealLinks(ctx, owner, deal.ID, DealLinksInput{AddContactIDs: []string{contactID}})
+			_, err := db.UpdateDeal(ctx, owner, deal.ID, DealUpdateInput{AddContactIDs: []string{contactID}})
 			outcomes <- err
 		}()
 	}

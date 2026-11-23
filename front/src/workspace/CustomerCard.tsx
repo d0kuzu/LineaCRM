@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useCrm } from '../crm/session';
 import { useLocale } from '../i18n';
 import { CustomerForm } from './CustomerForm';
-import { CustomerHistory } from './CustomerHistory';
+import { RecordHistory } from './RecordHistory';
 import { Fields, RecordDialog } from './shared';
 import { accessError, customerLink, errorMessage, singular, timestamp, useCustomerData, useCustomerFields, type Customer, type CustomerRef } from './customerData';
 
@@ -83,7 +83,7 @@ export function CustomerCard({ selected, onClose, onListChanged, onNewContact, p
           {canWrite && <button className="ws-text-button" onClick={() => onNewContact(record)}>Add contact</button>}</div>
           <CompanyContacts path={base + '/contacts?company_id=' + record.id} onAccessError={onAccessError}/>
         </section>}
-        <CustomerHistory key={revision} recordPath={path} canWrite={canWrite} participant={participant}
+        <RecordHistory key={revision} recordPath={path} canWrite={canWrite} participant={participant}
           linkedCompany={company?.data} fieldDefinitions={definitions.data} onAccessError={onAccessError}/>
       </>}
   </div></RecordDialog>;
