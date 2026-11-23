@@ -5,9 +5,18 @@ import type { SalesLocation } from '../routes';
 import { LeadForm } from './LeadForm';
 import { amountLabel, probabilityLabel } from './DealParameters';
 import { PipelinePreview } from './PipelinePreview';
+import { PipelineSettings } from './PipelineSettings';
 import { SalesCard } from './SalesCard';
 import { accessError, errorMessage, useCustomerData, type Member } from './customerData';
-import { salesLink, type Deal, type Lead, type SalesKind } from './salesData';
+import {
+  dealLocation,
+  salesLink,
+  statusLabels,
+  type Deal,
+  type Lead,
+  type Pipeline,
+  type SalesKind,
+} from './salesData';
 import { PageTitle, RecordDialog, Switcher } from './shared';
 import './customers.css';
 import './sales.css';
@@ -15,6 +24,7 @@ import './sales.css';
 const tabs = [
   ['leads', 'Leads'],
   ['deals', 'Deals'],
+  ['pipelines', 'Pipelines'],
   ['pipeline', 'Pipeline demo'],
 ] as const;
 const pageSize = 20;
@@ -31,6 +41,7 @@ export function Sales({ location }: { location?: SalesLocation }) {
       }}
     />
   );
+  if (view === 'pipelines') return <PipelineSettings switcher={switcher} />;
   if (view === 'pipeline')
     return (
       <>
@@ -66,6 +77,7 @@ function SalesDirectory({ kind, id, switcher }: { kind: SalesKind; id?: string; 
   });
   const list = useCustomerData<(Lead | Deal)[]>(base + '/' + kind + '?' + params, revision, 160);
   const team = useCustomerData<Member[]>('/auth/workspaces/' + workspace.id + '/members', revision);
+  const pipelines = useCustomerData<Pipeline[]>(kind === 'deals' ? base + '/pipelines' : null, revision);
   const title = kind === 'leads' ? 'Leads' : 'Deals';
   const canCreate = kind === 'leads' && workspace.role !== 'support';
   const items = list?.data ?? [];
@@ -82,7 +94,7 @@ function SalesDirectory({ kind, id, switcher }: { kind: SalesKind; id?: string; 
     window.location.hash = salesLink(kind);
   }
   const dates = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' });
-  if (accessError(list?.error) || accessError(team?.error))
+  if (accessError(list?.error) || accessError(team?.error) || accessError(pipelines?.error))
     return (
       <>
         <PageTitle title={title} description={workspace.name} />
@@ -138,6 +150,14 @@ function SalesDirectory({ kind, id, switcher }: { kind: SalesKind; id?: string; 
           </button>
         </p>
       )}
+      {pipelines?.error != null && (
+        <p role="alert" className="customer-error">
+          Could not load pipelines.{' '}
+          <button className="ws-text-button" onClick={refresh}>
+            Retry pipelines
+          </button>
+        </p>
+      )}
       <section className="ws-panel ws-table-panel">
         <div className="ws-section-head">
           <h2>{kind === 'leads' ? 'Lead directory' : 'Deal directory'}</h2>
@@ -175,6 +195,8 @@ function SalesDirectory({ kind, id, switcher }: { kind: SalesKind; id?: string; 
                       <th>Amount</th>
                       <th>Expected close date</th>
                       <th>Probability</th>
+                      <th>Pipeline / stage</th>
+                      <th>Status</th>
                     </>
                   )}
                   <th>{kind === 'leads' ? 'Status' : 'Source'}</th>
@@ -182,39 +204,47 @@ function SalesDirectory({ kind, id, switcher }: { kind: SalesKind; id?: string; 
                 </tr>
               </thead>
               <tbody>
-                {items.slice(0, pageSize).map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <a className="ws-text-button" href={salesLink(kind, row.id)}>
-                        {row.title}
-                      </a>
-                    </td>
-                    <td>{ownerLabel(row.owner_id)}</td>
-                    {'lead_id' in row && (
-                      <>
-                        <td>{amountLabel(row, locale)}</td>
-                        <td>{row.expected_close_date ?? '—'}</td>
-                        <td>{probabilityLabel(row.probability)}</td>
-                      </>
-                    )}
-                    <td>
-                      {'deal_id' in row ? (
-                        row.deal_id ? (
-                          'Converted'
-                        ) : (
-                          'Open'
-                        )
-                      ) : (
-                        <a className="customer-relation-link" href={salesLink('leads', row.lead_id)}>
-                          View lead
+                {items.slice(0, pageSize).map((row) => {
+                  const location =
+                    'stage_id' in row ? dealLocation(row, pipelines?.error ? [] : pipelines?.data) : null;
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        <a className="ws-text-button" href={salesLink(kind, row.id)}>
+                          {row.title}
                         </a>
+                      </td>
+                      <td>{ownerLabel(row.owner_id)}</td>
+                      {'lead_id' in row && (
+                        <>
+                          <td>{amountLabel(row, locale)}</td>
+                          <td>{row.expected_close_date ?? '—'}</td>
+                          <td>{probabilityLabel(row.probability)}</td>
+                          <td>
+                            {location?.pipeline} / {location?.stage}
+                          </td>
+                          <td>{statusLabels[row.status]}</td>
+                        </>
                       )}
-                    </td>
-                    <td>
-                      <time dateTime={row.created_at}>{dates.format(new Date(row.created_at))}</time>
-                    </td>
-                  </tr>
-                ))}
+                      <td>
+                        {'deal_id' in row ? (
+                          row.deal_id ? (
+                            'Converted'
+                          ) : (
+                            'Open'
+                          )
+                        ) : (
+                          <a className="customer-relation-link" href={salesLink('leads', row.lead_id)}>
+                            View lead
+                          </a>
+                        )}
+                      </td>
+                      <td>
+                        <time dateTime={row.created_at}>{dates.format(new Date(row.created_at))}</time>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -236,7 +266,15 @@ function SalesDirectory({ kind, id, switcher }: { kind: SalesKind; id?: string; 
         )}
       </section>
       {id ? (
-        <SalesCard key={id} kind={kind} id={id} ownerLabel={ownerLabel} onClose={closed} onChanged={refresh} />
+        <SalesCard
+          key={id}
+          kind={kind}
+          id={id}
+          pipelines={pipelines?.error ? [] : pipelines?.data}
+          ownerLabel={ownerLabel}
+          onClose={closed}
+          onChanged={refresh}
+        />
       ) : (
         creating &&
         canCreate && (

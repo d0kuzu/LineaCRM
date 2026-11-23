@@ -10,9 +10,18 @@ import {
   type Customer,
 } from './customerData';
 import { DealLinkFields, LeadForm, type LinkedContact } from './LeadForm';
+import { MoveDeal } from './DealStage';
 import { EditDealParameters, amountLabel, probabilityLabel } from './DealParameters';
 import { RecordHistory } from './RecordHistory';
-import { salesLink, type Deal, type Lead, type SalesKind } from './salesData';
+import {
+  dealLocation,
+  salesLink,
+  statusLabels,
+  type Deal,
+  type Lead,
+  type Pipeline,
+  type SalesKind,
+} from './salesData';
 import { Fields, RecordDialog } from './shared';
 
 function RelatedRecord({
@@ -186,18 +195,20 @@ export function SalesCard({
   kind,
   id,
   ownerLabel,
+  pipelines,
   onClose,
   onChanged,
 }: {
   kind: SalesKind;
   id: string;
   ownerLabel: (owner: string) => string;
+  pipelines?: Pipeline[];
   onClose: () => void;
   onChanged: () => void;
 }) {
   const { workspace } = useCrm();
   const { locale } = useLocale();
-  const [mode, setMode] = useState<'view' | 'edit' | 'convert' | 'parameters'>('view');
+  const [mode, setMode] = useState<'view' | 'edit' | 'convert' | 'parameters' | 'move'>('view');
   const [revision, setRevision] = useState(0);
   const [denied, setDenied] = useState(false);
   const base = '/crm/workspaces/' + workspace.id;
@@ -220,11 +231,13 @@ export function SalesCard({
     lead = row && 'deal_id' in row ? row : null,
     deal = row && 'lead_id' in row ? row : null;
   const canWrite = workspace.role !== 'support';
+  const location = deal && dealLocation(deal, pipelines);
   const titles = {
     view: row?.title,
     convert: 'Convert lead',
     edit: lead ? 'Edit lead' : 'Edit deal links',
     parameters: 'Edit deal parameters',
+    move: 'Move deal',
   };
   const title = (!denied && titles[mode]) || (kind === 'leads' ? 'Lead' : 'Deal');
   return (
@@ -255,6 +268,8 @@ export function SalesCard({
           />
         ) : canWrite && mode === 'edit' && deal ? (
           <EditDealLinks deal={deal} onSaved={reload} onCancel={() => setMode('view')} onDenied={onDenied} />
+        ) : canWrite && mode === 'move' && deal ? (
+          <MoveDeal deal={deal} onSaved={reload} onCancel={() => setMode('view')} onDenied={onDenied} />
         ) : canWrite && mode === 'parameters' && deal ? (
           <EditDealParameters
             deal={deal}
@@ -274,11 +289,14 @@ export function SalesCard({
                       ['Updated', timestamp(lead.updated_at, locale)],
                     ] as [string, string][])
                   : []),
-                ...(deal
+                ...(deal && location
                   ? ([
                       ['Amount', amountLabel(deal, locale)],
                       ['Expected close date', deal.expected_close_date ?? '—'],
                       ['Probability', probabilityLabel(deal.probability)],
+                      ['Pipeline', location.pipeline],
+                      ['Stage', location.stage],
+                      ['Status', statusLabels[deal.status]],
                     ] as [string, string][])
                   : []),
               ]}
@@ -315,7 +333,10 @@ export function SalesCard({
               <>
                 {canWrite && (
                   <div className="customer-actions">
-                    <button className="ws-action" onClick={() => setMode('parameters')}>
+                    <button className="ws-action" onClick={() => setMode('move')}>
+                      Move deal
+                    </button>
+                    <button className="ws-pill" onClick={() => setMode('parameters')}>
                       Edit parameters
                     </button>
                     <button className="ws-pill" onClick={() => setMode('edit')}>

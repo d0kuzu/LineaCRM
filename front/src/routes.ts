@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 export const sections = ['overview', 'customers', 'sales', 'tasks', 'calendar', 'inbox', 'analytics'] as const;
 export type Section = (typeof sections)[number];
-export type SalesLocation = { view: 'leads' | 'deals' | 'pipeline'; id?: string };
+export type SalesLocation = { view: 'leads' | 'deals' | 'pipeline' | 'pipelines'; id?: string };
 export type Route =
   | { kind: 'section'; page: Section; record?: { kind: 'companies' | 'contacts'; id: string }; sales?: SalesLocation }
   | { kind: 'detail'; page: 'assistant' | 'search' | 'deal' | 'meeting'; id?: string }
@@ -16,9 +16,9 @@ function parseRoute(hash: string): Route {
   if (page === 'customers' && (id === 'companies' || id === 'contacts') && hasRecordID) {
     return { kind: 'section', page, record: { kind: id, id: extra[0] } };
   }
-  if (page === 'sales' && (id === 'leads' || id === 'deals' || id === 'pipeline')) {
+  if (page === 'sales' && (id === 'leads' || id === 'deals' || id === 'pipeline' || id === 'pipelines')) {
     if (!extra.length) return { kind: 'section', page, sales: { view: id } };
-    if (id !== 'pipeline' && hasRecordID) return { kind: 'section', page, sales: { view: id, id: extra[0] } };
+    if ((id === 'leads' || id === 'deals') && hasRecordID) return { kind: 'section', page, sales: { view: id, id: extra[0] } };
   }
   if (extra.length) return { kind: 'missing', page: 'missing' };
   if (!id) {

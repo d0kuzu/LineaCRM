@@ -23,6 +23,9 @@ func NewRouter(a *app.App) *gin.Engine {
 	}), gin.Recovery())
 	records := router.Group("/workspaces/:workspace_id", authorize(a.Access))
 	h := handlers{db: a.DB, access: a.Access}
+	records.GET("/pipelines", h.listPipelines)
+	records.POST("/pipelines", h.writePipeline)
+	records.PUT("/pipelines/:id", h.writePipeline)
 	records.GET("/leads", salesList(a.DB.ListLeads))
 	records.POST("/leads", h.writeLead)
 	records.GET("/leads/:id", getSalesRecord(a.DB.GetLead))
@@ -128,11 +131,13 @@ func recordResponse(c *gin.Context, status int, data any, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "record not found"})
 	case errors.Is(err, database.ErrLeadConverted):
 		c.JSON(http.StatusConflict, gin.H{"error": "this lead has already been converted"})
-	case errors.Is(err, database.ErrSalesForbidden):
+	case errors.Is(err, database.ErrSalesForbidden), errors.Is(err, database.ErrPipelineForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+	case errors.Is(err, database.ErrPipelineConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrDealContactLimit), errors.Is(err, database.ErrDealLinkConflict), errors.Is(err, database.ErrInvalidDealTerms):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	case errors.Is(err, database.ErrInvalidField):
+	case errors.Is(err, database.ErrInvalidField), errors.Is(err, database.ErrInvalidPipeline):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrFieldConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "a field with that label already exists"})

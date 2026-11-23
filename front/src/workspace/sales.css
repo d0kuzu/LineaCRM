@@ -11,3 +11,12 @@
 .sales-selected { display:flex;gap:6px;flex-wrap:wrap;list-style:none;margin:4px 0 8px;padding:0; }
 .sales-selected li { border-radius:8px;background:#e8ede8;color:#36473b;padding:2px 7px;font-size:12px;overflow-wrap:anywhere; }
 .sales-selected button { border:none;background:transparent; }
+.pipeline-summary { margin-bottom:14px; }
+.pipeline-summary h2 small { margin-left:8px;font-size:12px;font-weight:500;color:#5b655d; }
+.pipeline-summary ol { display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 0;padding:0;list-style:none; }
+.pipeline-summary li { min-width:90px;padding:8px 12px;border-left:2px solid #b8c6b8;background:#f5f7f3;overflow-wrap:anywhere; }
+.pipeline-summary li small { display:block;margin-top:3px;color:#536056; }
+.pipeline-editor-stages { margin:6px 0 12px;padding:0;list-style:none; }
+.pipeline-editor-stages li { border-bottom:1px solid #dfe2de;padding:10px 0; }
+.pipeline-stage-fields { display:grid;grid-template-columns:minmax(0,2fr) minmax(85px,1fr);gap:10px; }
+.pipeline-stage-actions { display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px; }

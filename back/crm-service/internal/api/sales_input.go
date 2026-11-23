@@ -61,6 +61,10 @@ func conversionInput(body []byte) (database.ConversionInput, error) {
 			value, err := salesText(decoder, name, 200)
 			input.Title = value
 			return err
+		case "stage_id":
+			id, err := stageID(decoder)
+			input.StageID = id
+			return err
 		case "company_id":
 			id, err := companyLink(decoder)
 			input.CompanyID = id
@@ -141,6 +145,8 @@ func dealUpdateInput(body []byte) (database.DealUpdateInput, error) {
 			input.AddContactIDs, err = contactLinks(decoder)
 		case "remove_contact_ids":
 			input.RemoveContactIDs, err = contactLinks(decoder)
+		case "stage_id":
+			input.StageID, err = stageID(decoder)
 		default:
 			return readDealTerm(name, decoder, &input.DealTermsPatch)
 		}

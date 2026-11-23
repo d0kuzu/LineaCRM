@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useCrm } from '../crm/session';
 import { ApiError } from '../crm/http';
 import { CompanyPicker } from './CompanyPicker';
+import { StageSelect } from './DealStage';
 import { DealParameterFields, parameterChanges, parameterDraft } from './DealParameters';
 import { accessError, errorMessage, useCustomerData, type Customer, type Member } from './customerData';
 import type { Lead, SalesKind } from './salesData';
@@ -199,6 +200,7 @@ export function LeadForm({
   const [description, setDescription] = useState(lead?.description ?? '');
   const [owner, setOwner] = useState(lead?.owner_id ?? profile.id);
   const [company, setCompany] = useState('');
+  const [stage, setStage] = useState('');
   const [parameters, setParameters] = useState(() => parameterDraft());
   const [contacts, setContacts] = useState<LinkedContact[]>([]);
   const [teamRevision, setTeamRevision] = useState(0);
@@ -240,6 +242,7 @@ export function LeadForm({
         return;
       }
       if (company) payload.company_id = company;
+      if (stage) payload.stage_id = stage;
       if (contacts.length) payload.contact_ids = contacts.map((contact) => contact.id);
     } else {
       if ((!lead && text) || (lead && text !== lead.description)) payload.description = text;
@@ -285,6 +288,7 @@ export function LeadForm({
         </label>
         {convert ? (
           <>
+            <StageSelect value={stage} onChange={setStage} onDenied={onDenied} openOnly />
             <DealParameterFields draft={parameters} setDraft={setParameters} />
             <DealLinkFields
               company={company}

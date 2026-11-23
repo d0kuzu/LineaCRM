@@ -16,6 +16,9 @@ type Deal struct {
 	WorkspaceID string    `json:"workspace_id"`
 	OwnerID     string    `json:"owner_id"`
 	LeadID      string    `json:"lead_id"`
+	PipelineID  string    `json:"pipeline_id"`
+	StageID     string    `json:"stage_id"`
+	Status      string    `json:"status"`
 	Title       string    `json:"title"`
 	CompanyID   *string   `json:"company_id"`
 	ContactIDs  []string  `json:"contact_ids"`
@@ -24,6 +27,7 @@ type Deal struct {
 
 type ConversionInput struct {
 	DealTermsPatch
+	StageID    *string  `json:"stage_id"`
 	Title      *string  `json:"title"`
 	CompanyID  *string  `json:"company_id"`
 	ContactIDs []string `json:"contact_ids"`
@@ -31,6 +35,7 @@ type ConversionInput struct {
 
 type DealUpdateInput struct {
 	DealTermsPatch
+	StageID          *string  `json:"stage_id"`
 	CompanyID        *string  `json:"company_id"`
 	AddContactIDs    []string `json:"add_contact_ids"`
 	RemoveContactIDs []string `json:"remove_contact_ids"`
@@ -45,12 +50,14 @@ var (
 // customer IDs the current reader can access, including on conversion retries.
 const readDeals = `
 	SELECT d.id, d.workspace_id, d.owner_id, d.lead_id, d.title, d.created_at, company.id AS company_id,
+		d.stage_id, stage.pipeline_id, stage.kind AS status,
 		d.amount::text AS amount, d.currency, to_char(d.expected_close_date, 'YYYY-MM-DD') AS expected_close_date, d.probability,
 		ARRAY(SELECT c.id FROM deal_contacts link
 		      JOIN contacts c ON c.workspace_id = link.workspace_id AND c.id = link.contact_id
 		      WHERE link.workspace_id = d.workspace_id AND link.deal_id = d.id AND ($3 OR c.owner_id = $2)
 		      ORDER BY link.position, c.id) AS contact_ids
-	FROM deals d LEFT JOIN companies company
+	FROM deals d JOIN pipeline_stages stage ON stage.workspace_id=d.workspace_id AND stage.id=d.stage_id
+	LEFT JOIN companies company
 	     ON company.workspace_id = d.workspace_id AND company.id = d.company_id AND ($3 OR company.owner_id = $2)
 	WHERE d.workspace_id = $1 AND ($3 OR d.owner_id = $2)`
 
@@ -133,11 +140,15 @@ func changeDealContacts(ctx context.Context, tx pgx.Tx, scope Scope, dealID stri
 func (s *Store) UpdateDeal(ctx context.Context, scope Scope, id string, input DealUpdateInput) (Deal, error) {
 	var deal Deal
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := lockPipelines(ctx, tx, scope.WorkspaceID, false); err != nil {
+			return err
+		}
 		var currentCompany *string
+		var stageID string
 		var previous DealTerms
-		err := tx.QueryRow(ctx, `SELECT company_id, amount::text, currency, to_char(expected_close_date, 'YYYY-MM-DD'), probability
+		err := tx.QueryRow(ctx, `SELECT company_id, stage_id, amount::text, currency, to_char(expected_close_date, 'YYYY-MM-DD'), probability
 			FROM deals WHERE workspace_id = $1 AND ($3 OR owner_id = $2) AND id = $4 FOR UPDATE`,
-			scope.WorkspaceID, scope.UserID, scope.All, id).Scan(&currentCompany, &previous.Amount, &previous.Currency, &previous.ExpectedCloseDate, &previous.Probability)
+			scope.WorkspaceID, scope.UserID, scope.All, id).Scan(&currentCompany, &stageID, &previous.Amount, &previous.Currency, &previous.ExpectedCloseDate, &previous.Probability)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -149,6 +160,12 @@ func (s *Store) UpdateDeal(ctx context.Context, scope Scope, id string, input De
 			return err
 		}
 		changes := next.changesFrom(previous)
+		if input.StageID != nil && *input.StageID != stageID {
+			if err := stageChanges(ctx, tx, scope.WorkspaceID, stageID, *input.StageID, changes); err != nil {
+				return err
+			}
+			stageID = *input.StageID
+		}
 		if input.CompanyID != nil {
 			if currentCompany != nil && !scope.All {
 				if err := checkDealCompany(ctx, tx, scope, *currentCompany); err != nil {
@@ -166,8 +183,8 @@ func (s *Store) UpdateDeal(ctx context.Context, scope Scope, id string, input De
 		}
 		if input.CompanyID != nil || len(changes) > 0 {
 			_, err := tx.Exec(ctx, `UPDATE deals SET company_id = $3, amount = $4::text::numeric, currency = $5,
-				expected_close_date = $6::text::date, probability = $7 WHERE workspace_id = $1 AND id = $2`,
-				scope.WorkspaceID, id, currentCompany, next.Amount, next.Currency, next.ExpectedCloseDate, next.Probability)
+				expected_close_date = $6::text::date, probability = $7, stage_id = $8 WHERE workspace_id = $1 AND id = $2`,
+				scope.WorkspaceID, id, currentCompany, next.Amount, next.Currency, next.ExpectedCloseDate, next.Probability, stageID)
 			if err != nil {
 				return err
 			}
@@ -191,6 +208,9 @@ func (s *Store) ConvertLead(ctx context.Context, scope Scope, id string, input C
 	var deal Deal
 	created := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := lockPipelines(ctx, tx, scope.WorkspaceID, false); err != nil {
+			return err
+		}
 		lead, err := lockLead(ctx, tx, scope, id)
 		if err != nil {
 			return err
@@ -200,6 +220,10 @@ func (s *Store) ConvertLead(ctx context.Context, scope Scope, id string, input C
 			return err
 		}
 		terms, err := input.DealTermsPatch.apply(DealTerms{})
+		if err != nil {
+			return err
+		}
+		stage, err := initialDealStage(ctx, tx, scope.WorkspaceID, input.StageID)
 		if err != nil {
 			return err
 		}
@@ -215,9 +239,9 @@ func (s *Store) ConvertLead(ctx context.Context, scope Scope, id string, input C
 			title = strings.TrimSpace(*input.Title)
 		}
 		dealID := uuid.NewString()
-		_, err = tx.Exec(ctx, `INSERT INTO deals (workspace_id, id, owner_id, lead_id, title, company_id, amount, currency, expected_close_date, probability)
-			VALUES ($1, $2, $3, $4, $5, $6, $7::text::numeric, $8, $9::text::date, $10)`, scope.WorkspaceID,
-			dealID, lead.OwnerID, lead.ID, title, companyID, terms.Amount, terms.Currency, terms.ExpectedCloseDate, terms.Probability)
+		_, err = tx.Exec(ctx, `INSERT INTO deals (workspace_id, id, owner_id, lead_id, title, company_id, amount, currency, expected_close_date, probability,stage_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7::text::numeric, $8, $9::text::date, $10,$11)`, scope.WorkspaceID,
+			dealID, lead.OwnerID, lead.ID, title, companyID, terms.Amount, terms.Currency, terms.ExpectedCloseDate, terms.Probability, stage.ID)
 		if err != nil {
 			return err
 		}
